@@ -1,0 +1,118 @@
+'use client'
+
+import Link from 'next/link'
+import { Sector } from '@/lib/sectors'
+import { PriceSignal } from '@/lib/sectors'
+import Sparkline from '@/components/Sparkline'
+import { generateSparkline } from '@/lib/mockData'
+
+interface SectorCardProps {
+  sector: Sector
+  quote?: {
+    price: number
+    change: number
+    changePct: number
+  }
+  signal?: PriceSignal
+}
+
+const SIGNAL_CONFIG = {
+  BUY:   { bg: 'bg-green-900/30',  border: 'border-green-500/40',  text: 'text-green-400' },
+  SELL:  { bg: 'bg-red-900/30',    border: 'border-red-500/40',    text: 'text-red-400' },
+  HOLD:  { bg: 'bg-yellow-900/20', border: 'border-yellow-500/30', text: 'text-yellow-400' },
+  WATCH: { bg: 'bg-blue-900/20',   border: 'border-blue-500/30',   text: 'text-blue-400' },
+}
+
+export default function SectorCard({ sector, quote, signal }: SectorCardProps) {
+  const isUp = (quote?.changePct ?? 0) >= 0
+  const sparkData = generateSparkline(sector.etf)
+  const sigCfg = signal ? SIGNAL_CONFIG[signal.direction] : null
+
+  return (
+    <Link href={`/sector/${sector.slug}`}>
+      <div
+        className={`group relative rounded-2xl p-4 border transition-all duration-300 hover:scale-[1.02] hover:shadow-xl cursor-pointer overflow-hidden ${sector.borderColor}`}
+        style={{
+          background: 'linear-gradient(135deg, rgba(14,14,22,0.97) 0%, rgba(9,9,16,0.99) 100%)',
+          boxShadow: `0 0 0 1px ${sector.color}12`,
+        }}
+      >
+        {/* Hover radial glow */}
+        <div
+          className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none"
+          style={{ background: `radial-gradient(circle at 50% 0%, ${sector.color}0a 0%, transparent 65%)` }}
+        />
+
+        {/* Header row */}
+        <div className="flex items-start justify-between mb-2 relative">
+          <div>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-base">{sector.icon}</span>
+              <span className="text-[10px] font-mono tracking-wider text-slate-500">{sector.etf}</span>
+            </div>
+            <div className="text-sm font-bold text-white">{sector.name}</div>
+          </div>
+          {signal && sigCfg && (
+            <span className={`text-[10px] font-bold tracking-widest px-1.5 py-0.5 rounded ${sigCfg.bg} ${sigCfg.text}`}>
+              {signal.direction}
+            </span>
+          )}
+        </div>
+
+        {/* Price row + sparkline */}
+        <div className="flex items-end justify-between mb-2.5 relative">
+          <div>
+            {quote ? (
+              <>
+                <div className="text-xl font-bold text-white font-mono leading-none">
+                  ${quote.price.toFixed(2)}
+                </div>
+                <div className={`text-xs font-mono mt-0.5 ${isUp ? 'text-green-400' : 'text-red-400'}`}>
+                  {isUp ? '▲' : '▼'} {Math.abs(quote.changePct).toFixed(2)}%
+                </div>
+              </>
+            ) : (
+              <div className="space-y-1">
+                <div className="h-5 w-20 bg-slate-800 rounded animate-pulse" />
+                <div className="h-3 w-12 bg-slate-800 rounded animate-pulse" />
+              </div>
+            )}
+          </div>
+          {/* 14-day sparkline */}
+          <Sparkline data={sparkData} color={sector.color} width={72} height={28} />
+        </div>
+
+        {/* Signal confidence bar */}
+        {signal && (
+          <div className="relative mb-2.5">
+            <div className="flex justify-between text-[10px] mb-1 text-slate-600">
+              <span>Confidence</span>
+              <span style={{ color: sector.color }} className="font-mono">{signal.confidence}%</span>
+            </div>
+            <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-700"
+                style={{ width: `${signal.confidence}%`, backgroundColor: sector.color }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Top holdings chips */}
+        <div className="flex gap-1 flex-wrap relative">
+          {sector.topHoldings.slice(0, 4).map(h => (
+            <span key={h} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800/90 text-slate-500 font-mono">
+              {h}
+            </span>
+          ))}
+        </div>
+
+        {/* Bottom glow bar */}
+        <div
+          className="absolute bottom-0 left-0 right-0 h-px transition-opacity opacity-30 group-hover:opacity-80"
+          style={{ background: `linear-gradient(90deg, transparent, ${sector.color}, transparent)` }}
+        />
+      </div>
+    </Link>
+  )
+}
