@@ -1,22 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SECTORS } from '@/lib/sectors'
 import YahooFinance from 'yahoo-finance2'
+import { fetchBloombergQuotesViaBridge, isBloombergBridgeConfigured } from '@/lib/data/bloomberg/bridgeClient'
+import { mergeYahooAndBloomberg } from '@/lib/data/mergeQuotes'
+
 const yahooFinance = new YahooFinance()
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const queryTickers = url.searchParams.get('tickers')
-  
-  // If ?tickers=AAPL,MSFT is passed, use those. Otherwise, use default sector ETFs basket.
-  const tickers = queryTickers 
-    ? queryTickers.split(',').map(t => t.toUpperCase())
-    : [...SECTORS.map(s => s.etf), 'SPY', 'QQQ']
-  
+
+  const tickers = queryTickers
+    ? queryTickers.split(',').map((t) => {
+        const u = decodeURIComponent(t.trim()).toUpperCase()
+        return u === 'VIX' ? '^VIX' : u
+      })
+    : [...SECTORS.map((s) => s.etf), 'SPY', 'QQQ']
+
   try {
-    const results = await yahooFinance.quote(tickers) as any[]
-    
-    // Convert to our platform's unified Format
-    const quotes = results.map((q: any) => ({
+    const [results, bbMap] = await Promise.all([
+      yahooFinance.quote(tickers) as Promise<any[]>,
+      isBloombergBridgeConfigured() ? fetchBloombergQuotesViaBridge(tickers) : Promise.resolve(null),
+    ])
+
+    const yahooQuotes = results.map((q: any) => ({
       ticker: q.symbol,
       price: q.regularMarketPrice || 0,
       change: q.regularMarketChange || 0,
@@ -25,11 +32,22 @@ export async function GET(request: NextRequest) {
       high52w: q.fiftyTwoWeekHigh || 0,
       low52w: q.fiftyTwoWeekLow || 0,
       pe: q.trailingPE || 0,
-      marketCap: q.marketCap ? (q.marketCap / 1e9).toFixed(1) + 'B' : 'N/A'
+      marketCap: q.marketCap ? (q.marketCap / 1e9).toFixed(1) + 'B' : 'N/A',
     }))
 
+    const quotes = mergeYahooAndBloomberg(yahooQuotes, bbMap)
+    const bloombergTickers = quotes.filter((q) => q.dataSource === 'bloomberg').map((q) => q.ticker)
+
     return NextResponse.json(
-      { quotes, timestamp: new Date().toISOString() },
+      {
+        quotes,
+        timestamp: new Date().toISOString(),
+        dataSources: {
+          yahoo: true,
+          bloombergBridge: Boolean(bbMap && bbMap.size > 0),
+          bloombergTickers,
+        },
+      },
       { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
     )
   } catch (error) {

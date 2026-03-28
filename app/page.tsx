@@ -91,7 +91,7 @@ export default function HomePage() {
             <span className="gradient-text">Sector Intelligence</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            Institutional-grade market analysis across all 11 GICS sectors — real-time prices, dark pool flows, and curated signal briefs.
+            Live sector & commodity ETF quotes with charts; desk-style monitor; simulated dark pool / signal cards for workflow demos — verify all data with your vendor feeds.
           </p>
         </div>
 

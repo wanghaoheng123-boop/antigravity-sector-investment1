@@ -1,0 +1,130 @@
+import { NextRequest, NextResponse } from 'next/server'
+import YahooFinance from 'yahoo-finance2'
+import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
+import { buildFundamentalsPayload, type FundamentalsQuery } from '@/lib/quant/buildFundamentalsPayload'
+import { fetchBloombergQuotesViaBridge, isBloombergBridgeConfigured } from '@/lib/data/bloomberg/bridgeClient'
+import { hasPositiveClose } from '@/lib/quant/chartQuoteFilter'
+
+const yahooFinance = new YahooFinance()
+
+const MODULES = [
+  'summaryProfile',
+  'assetProfile',
+  'financialData',
+  'defaultKeyStatistics',
+  'balanceSheetHistory',
+  'incomeStatementHistory',
+  'cashflowStatementHistory',
+  'recommendationTrend',
+  'upgradeDowngradeHistory',
+  'calendarEvents',
+  'earningsHistory',
+] as const
+
+export async function GET(req: NextRequest, { params }: { params: { ticker: string } }) {
+  const symbol = yahooSymbolFromParam(params.ticker)
+  if (symbol === '^VIX' || symbol.startsWith('^') && symbol.length <= 5) {
+    return NextResponse.json(
+      { error: 'Fundamentals module is for equities/ETFs with statements, not broad indices.' },
+      { status: 422 }
+    )
+  }
+
+  const url = new URL(req.url)
+  const q: FundamentalsQuery = {
+    wacc: clamp(parseFloat(url.searchParams.get('wacc') || '0.09'), 0.04, 0.2),
+    terminalGrowth: clamp(parseFloat(url.searchParams.get('tg') || '0.025'), 0, 0.05),
+    gBear: clamp(parseFloat(url.searchParams.get('gBear') || '0.02'), -0.1, 0.2),
+    gBase: clamp(parseFloat(url.searchParams.get('gBase') || '0.05'), -0.1, 0.25),
+    gBull: clamp(parseFloat(url.searchParams.get('gBull') || '0.09'), -0.05, 0.35),
+  }
+
+  const period1 = new Date()
+  period1.setDate(period1.getDate() - 800)
+
+  try {
+    const [summary, chart, spyChart, quoteRow] = await Promise.all([
+      yahooFinance.quoteSummary(symbol, { modules: [...MODULES] }) as Promise<Record<string, unknown>>,
+      yahooFinance.chart(symbol, { period1, interval: '1d' }).catch(() => null),
+      yahooFinance.chart('SPY', { period1, interval: '1d' }).catch(() => null),
+      yahooFinance.quote(symbol).catch(() => null),
+    ])
+
+    const quotes = chart?.quotes?.filter(hasPositiveClose) ?? []
+    const closes = quotes.map((c) => c.close!)
+    const dates = quotes.map((c) => {
+      const d = c.date
+      return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)
+    })
+    const ohlc = quotes.map((c) => {
+      const cl = c.close!
+      return {
+        open: c.open ?? cl,
+        high: c.high ?? cl,
+        low: c.low ?? cl,
+        close: cl,
+      }
+    })
+
+    const spyQ = spyChart?.quotes?.filter(hasPositiveClose) ?? []
+    const spyCloses = spyQ.map((c) => c.close!)
+    const spyDates = spyQ.map((c) => {
+      const d = c.date
+      return d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10)
+    })
+
+    const qAny = quoteRow as { regularMarketPrice?: number } | null
+    const livePrice =
+      typeof qAny?.regularMarketPrice === 'number' && qAny.regularMarketPrice > 0
+        ? qAny.regularMarketPrice
+        : closes.length
+          ? closes[closes.length - 1]
+          : null
+
+    let bloombergSpot: number | null = null
+    if (isBloombergBridgeConfigured()) {
+      const bb = await fetchBloombergQuotesViaBridge([symbol])
+      const row = bb?.get(symbol)
+      if (row && row.price > 0) bloombergSpot = row.price
+    }
+    const displayPrice =
+      bloombergSpot != null && bloombergSpot > 0 ? bloombergSpot : livePrice
+
+    const payload = buildFundamentalsPayload(
+      symbol,
+      summary,
+      closes,
+      dates,
+      ohlc,
+      spyCloses,
+      spyDates,
+      displayPrice,
+      q
+    )
+
+    return NextResponse.json(
+      {
+        ...payload,
+        priceSources: {
+          display: displayPrice,
+          yahoo: livePrice,
+          bloomberg: bloombergSpot,
+        },
+      },
+      {
+        headers: { 'Cache-Control': 's-maxage=120, stale-while-revalidate=300' },
+      }
+    )
+  } catch (e) {
+    console.error('[Fundamentals API]', symbol, e)
+    return NextResponse.json(
+      { error: 'Failed to load fundamentals', symbol, details: String(e) },
+      { status: 502 }
+    )
+  }
+}
+
+function clamp(x: number, lo: number, hi: number): number {
+  if (!Number.isFinite(x)) return lo
+  return Math.min(hi, Math.max(lo, x))
+}

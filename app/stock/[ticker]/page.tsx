@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import DarkPoolPanel from '@/components/DarkPoolPanel'
+import WatchlistButton from '@/components/WatchlistButton'
+import QuantLabPanel from '@/components/stock/QuantLabPanel'
 import NewsFeed from '@/components/NewsFeed'
 import { getNewsForSector, generateDarkPoolPrints } from '@/lib/mockData'
 import { DarkPoolPrint } from '@/lib/sectors'
@@ -24,7 +26,7 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
   const [darkPoolMarkers, setDarkPoolMarkers] = useState<DpMarker[]>([])
   const [quote, setQuote] = useState<{ price: number; change: number; changePct: number; marketCap: string } | null>(null)
   const [darkPoolPrints, setDarkPoolPrints] = useState<DarkPoolPrint[]>([])
-  const [activeTab, setActiveTab] = useState('chart')
+  const [activeTab, setActiveTab] = useState<'chart' | 'quant' | 'darkpool' | 'news'>('chart')
   const [activeRange, setActiveRange] = useState('1Y')
   const [loading, setLoading] = useState(true)
 
@@ -102,11 +104,14 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                   <span className="text-xs text-slate-400">Individual Stock</span>
                 </div>
                 <h1 className="text-2xl font-bold text-white tracking-wide">{ticker}</h1>
-                <p className="text-sm text-slate-400 mt-0.5">Real-time asset intelligence and quantitative deep-dive.</p>
+                <p className="text-sm text-slate-400 mt-0.5">
+                  Live prices & charts + Quant Lab (fundamentals, DCF scenarios, Codex frameworks).
+                </p>
               </div>
             </div>
             
-            <div className="flex items-start gap-6">
+            <div className="flex items-start gap-4 flex-wrap">
+              <WatchlistButton ticker={ticker} className="shrink-0 self-start" />
               {quote ? (
                 <div className="text-right">
                   <div className="text-2xl font-bold text-white font-mono">${quote.price.toFixed(2)}</div>
@@ -127,46 +132,50 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
       </div>
 
       {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-          
-          {/* Left: Chart + Tabs */}
-          <div className="xl:col-span-2 space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-                {['chart', 'darkpool', 'news'].map(tab => (
-                  <button
-                    key={tab}
-                    onClick={() => setActiveTab(tab)}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-md transition-all capitalize ${
-                      activeTab === tab
-                        ? 'bg-slate-700 text-white'
-                        : 'text-slate-500 hover:text-slate-300'
-                    }`}
-                  >
-                    {tab === 'darkpool' ? 'Dark Pool' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-                  </button>
-                ))}
-              </div>
-              {activeTab === 'chart' && (
-                <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-                  {['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'ALL'].map(r => (
-                    <button
-                      key={r}
-                      onClick={() => setActiveRange(r)}
-                      className={`px-3 py-1.5 text-xs rounded-md transition-all ${
-                        activeRange === r
-                          ? 'bg-slate-700 text-white'
-                          : 'text-slate-500 hover:text-slate-300'
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
-              )}
+      <div className="max-w-7xl mx-auto px-4 py-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+            {(
+              [
+                ['chart', 'Chart'],
+                ['quant', 'Quant Lab'],
+                ['darkpool', 'Dark Pool'],
+                ['news', 'News'],
+              ] as const
+            ).map(([tab, label]) => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`px-3 sm:px-4 py-1.5 text-xs font-medium rounded-md transition-all ${
+                  activeTab === tab ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {activeTab === 'chart' && (
+            <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+              {['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'ALL'].map((r) => (
+                <button
+                  key={r}
+                  onClick={() => setActiveRange(r)}
+                  className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                    activeRange === r ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'
+                  }`}
+                >
+                  {r}
+                </button>
+              ))}
             </div>
+          )}
+        </div>
 
+        {activeTab === 'quant' ? (
+          <QuantLabPanel ticker={ticker} />
+        ) : (
+        <div className="grid grid-cols-1 xl:grid-cols-3 gap-8">
+          <div className="xl:col-span-2 space-y-6">
             {/* Chart tab */}
             {activeTab === 'chart' && (
               <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4 shadow-xl">
@@ -212,24 +221,24 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
           {/* Right Sidebar */}
           <div className="space-y-6">
             <div className="bg-slate-900/40 rounded-2xl border border-slate-800 p-6">
-              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-4">Quantitative Analysis</h3>
+              <h3 className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-4">Session snapshot</h3>
               <div className="space-y-4">
                 <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
-                  <span className="text-sm text-slate-400">Trend Status</span>
-                  {quote && quote.changePct > 0 ? (
-                    <span className="text-sm font-mono text-green-400 font-medium">BULLISH DIVERGENCE</span>
+                  <span className="text-sm text-slate-400">1d change</span>
+                  {quote ? (
+                    <span
+                      className={`text-sm font-mono font-medium ${quote.changePct >= 0 ? 'text-emerald-400' : 'text-red-400'}`}
+                    >
+                      {quote.changePct >= 0 ? '+' : ''}
+                      {quote.changePct.toFixed(2)}%
+                    </span>
                   ) : (
-                    <span className="text-sm font-mono text-red-400 font-medium">BEARISH PRESSURE</span>
+                    <span className="text-sm text-slate-600">—</span>
                   )}
                 </div>
-                <div className="flex justify-between items-center border-b border-slate-800/50 pb-2">
-                  <span className="text-sm text-slate-400">Institutional Flow</span>
-                  <span className="text-sm font-mono text-blue-400">ACCUMULATION</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-sm text-slate-400">Options Gamma</span>
-                  <span className="text-sm font-mono text-slate-200">LONG TILT</span>
-                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Open <strong className="text-slate-400">Quant Lab</strong> for live fundamentals, DCF bear/base/bull, volatility-aware buy/sell bands, and Codex-style allocator checklists (not trade advice).
+                </p>
               </div>
             </div>
 
@@ -265,6 +274,7 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
 
           </div>
         </div>
+        )}
       </div>
     </div>
   )

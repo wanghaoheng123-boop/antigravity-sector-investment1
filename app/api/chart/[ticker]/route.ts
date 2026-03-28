@@ -8,7 +8,8 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { ticker: string } }
 ) {
-  const ticker = params.ticker.toUpperCase()
+  let ticker = params.ticker.toUpperCase()
+  if (ticker === 'VIX') ticker = '^VIX'
   const { searchParams } = new URL(req.url)
   const range = searchParams.get('range') || '1Y'
   

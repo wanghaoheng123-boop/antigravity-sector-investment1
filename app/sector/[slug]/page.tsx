@@ -7,6 +7,7 @@ import dynamic from 'next/dynamic'
 import SignalCard from '@/components/SignalCard'
 import DarkPoolPanel from '@/components/DarkPoolPanel'
 import NewsFeed from '@/components/NewsFeed'
+import WatchlistButton from '@/components/WatchlistButton'
 import { SECTORS, getSectorBySlug } from '@/lib/sectors'
 import { generateSignals, generateDarkPoolPrints, getNewsForSector } from '@/lib/mockData'
 import { PriceSignal, DarkPoolPrint } from '@/lib/sectors'
@@ -99,6 +100,7 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
               </div>
             </div>
             <div className="flex items-start gap-6">
+              <WatchlistButton ticker={sector.etf} className="shrink-0" />
               {quote ? (
                 <div className="text-right">
                   <div className="text-2xl font-bold text-white font-mono">${quote.price.toFixed(2)}</div>

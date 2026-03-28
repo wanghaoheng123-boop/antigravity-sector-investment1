@@ -15,11 +15,25 @@ const DIRECTION_CONFIG = {
   WATCH: { label: 'WATCH', bg: 'bg-blue-900/20', border: 'border-blue-500/30', text: 'text-blue-400', dot: 'bg-blue-400' },
 }
 
+function formatRiskReward(signal: PriceSignal): string {
+  if (signal.direction === 'BUY') {
+    const risk = signal.entry - signal.stopLoss
+    const reward = signal.target - signal.entry
+    if (risk <= 0 || reward <= 0 || !Number.isFinite(risk) || !Number.isFinite(reward)) return '—'
+    return (reward / risk).toFixed(2)
+  }
+  if (signal.direction === 'SELL') {
+    const risk = signal.stopLoss - signal.entry
+    const reward = signal.entry - signal.target
+    if (risk <= 0 || reward <= 0 || !Number.isFinite(risk) || !Number.isFinite(reward)) return '—'
+    return (reward / risk).toFixed(2)
+  }
+  return 'N/A'
+}
+
 export default function SignalCard({ signal, color, compact = false }: SignalCardProps) {
   const config = DIRECTION_CONFIG[signal.direction]
-  const riskPct = signal.direction === 'BUY'
-    ? ((signal.target - signal.entry) / (signal.entry - signal.stopLoss)).toFixed(1)
-    : ((signal.entry - signal.target) / (signal.stopLoss - signal.entry)).toFixed(1)
+  const riskPct = formatRiskReward(signal)
 
   if (compact) {
     return (
@@ -99,7 +113,7 @@ export default function SignalCard({ signal, color, compact = false }: SignalCar
       {/* Risk/Reward */}
       <div className="flex items-center justify-between text-xs text-slate-500 mb-3">
         <span>Risk/Reward Ratio</span>
-        <span className="font-mono text-white">1:{riskPct}</span>
+        <span className="font-mono text-white">{riskPct === 'N/A' || riskPct === '—' ? riskPct : `1:${riskPct}`}</span>
       </div>
 
       {/* Rationale */}
