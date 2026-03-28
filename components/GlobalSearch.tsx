@@ -2,15 +2,16 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
 
 const SEARCH_LIMIT = 40
 
-/** Rough ticker pattern: AAPL, BRK-B, ^VIX, GC=F */
+/** Rough ticker pattern: AAPL, BRK-B, 7203.T, ^VIX, GC=F */
 function looksLikeDirectTicker(s: string): string | null {
   const t = s.trim().toUpperCase()
-  if (t.length < 1 || t.length > 20) return null
+  if (t.length < 1 || t.length > 24) return null
   if (!/^[A-Z0-9^.\-=*]+$/.test(t)) return null
-  return t
+  return yahooSymbolFromParam(t)
 }
 
 export default function GlobalSearch() {
@@ -19,6 +20,7 @@ export default function GlobalSearch() {
     { symbol: string; shortname: string; exchange: string; typeDisp: string }[]
   >([])
   const [loading, setLoading] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const [isOpen, setIsOpen] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
@@ -40,14 +42,24 @@ export default function GlobalSearch() {
         return
       }
       setLoading(true)
+      setFetchError(null)
       try {
         const res = await fetch(
           `/api/search?q=${encodeURIComponent(query)}&limit=${SEARCH_LIMIT}`
         )
         const data = await res.json()
+        if (!res.ok) {
+          setFetchError(typeof data.error === 'string' ? data.error : 'Search request failed')
+          setResults([])
+          return
+        }
         setResults(data.quotes || [])
+        if ((data.quotes || []).length === 0 && data.error) {
+          setFetchError(String(data.error))
+        }
       } catch (e) {
         console.error('Search error', e)
+        setFetchError('Network error — try again')
         setResults([])
       } finally {
         setLoading(false)
@@ -110,11 +122,19 @@ export default function GlobalSearch() {
       </div>
 
       <p className="text-[10px] text-slate-600 mt-1 px-0.5">
-        Up to {SEARCH_LIMIT} Yahoo results · type a ticker (e.g. AAPL) and press Enter to open Quant Lab
+        Up to {SEARCH_LIMIT} Yahoo results · symbol + Enter opens the stock page even if the list is empty
       </p>
+      {fetchError && (
+        <p className="text-[10px] text-amber-500/90 mt-1 px-0.5">{fetchError}</p>
+      )}
 
       {isOpen && query.trim().length > 0 && (
-        <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-800 rounded-md shadow-xl overflow-hidden z-50 max-h-96 overflow-y-auto">
+        <div
+          className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-800 rounded-md shadow-xl overflow-hidden z-[100] max-h-96 overflow-y-auto"
+          onMouseDown={(e) => e.preventDefault()}
+          role="listbox"
+          aria-label="Search results"
+        >
           {results.length > 0 ? (
             <ul>
               {results.map((quote) => (
