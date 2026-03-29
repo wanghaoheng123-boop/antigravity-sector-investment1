@@ -4,8 +4,8 @@ import { useCallback, useEffect, useState } from 'react'
 import { CODEX_FRAMEWORKS } from '@/lib/quant/frameworks'
 import { ChevronDown, ChevronRight, RefreshCw, Scale, BookOpen, LineChart, Layers, Eye, EyeOff, Lock } from 'lucide-react'
 import { halfKelly } from '@/lib/quant/kelly'
-import { PROVIDER_LABELS, DEFAULT_MODELS } from '@/app/api/trading-agents/[ticker]/route'
-import type { LLMProvider } from '@/app/api/trading-agents/[ticker]/route'
+import { PROVIDER_LABELS, DEFAULT_MODELS } from '@/lib/trading-agents-config'
+import type { LLMProvider } from '@/lib/trading-agents-config'
 
 type Payload = {
   symbol: string

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { SUPPORTED_PROVIDERS, DEFAULT_MODELS, type LLMProvider } from '@/lib/trading-agents-config'
 
 const TA_BASE =
   process.env.TRADING_AGENTS_BASE ||
@@ -9,44 +10,6 @@ const TA_BASE =
 const TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes — TradingAgents can be slow
 
 export const runtime = 'nodejs'
-
-// Supported providers and models
-export const SUPPORTED_PROVIDERS = [
-  'openai',
-  'google',
-  'anthropic',
-  'xai',
-  'openrouter',
-  'ollama',
-] as const
-
-export type LLMProvider = (typeof SUPPORTED_PROVIDERS)[number]
-
-// Default models per provider
-export const DEFAULT_MODELS: Record<LLMProvider, { deep: string; quick: string }> = {
-  openai:    { deep: 'gpt-4o',        quick: 'gpt-4o-mini' },
-  google:    { deep: 'gemini-2.0-flash', quick: 'gemini-1.5-flash' },
-  anthropic: { deep: 'claude-sonnet-4-20250514', quick: 'claude-3-5-haiku-20241022' },
-  xai:       { deep: 'grok-3',        quick: 'grok-3-mini' },
-  openrouter: { deep: 'anthropic/claude-sonnet-4', quick: 'anthropic/claude-3-5-haiku' },
-  ollama:    { deep: 'llama3',        quick: 'llama3' },
-}
-
-// Provider display names
-export const PROVIDER_LABELS: Record<LLMProvider, string> = {
-  openai:    'OpenAI (GPT)',
-  google:    'Google (Gemini)',
-  anthropic: 'Anthropic (Claude)',
-  xai:       'xAI (Grok)',
-  openrouter: 'OpenRouter',
-  ollama:    'Ollama (Local)',
-}
-
-// OpenAI-compatible base URLs for third-party providers
-const PROVIDER_BASE_URLS: Partial<Record<LLMProvider, string>> = {
-  openrouter: 'https://openrouter.ai/api/v1',
-  ollama:     'http://localhost:11434/v1',
-}
 
 export async function GET(
   _req: NextRequest,
@@ -147,7 +110,7 @@ export async function POST(
     )
   }
 
-  // Validate api_key format (basic check — just ensure it's a non-empty string)
+  // Basic api_key validation
   if (apiKey !== undefined && (typeof apiKey !== 'string' || apiKey.trim().length < 8)) {
     return NextResponse.json(
       { error: 'invalid_api_key', message: 'api_key must be a valid non-empty string' },
@@ -155,32 +118,29 @@ export async function POST(
     )
   }
 
-  // Sanitize: remove any keys that shouldn't be forwarded
-  const {
-    api_key: _stripped,
-    ...optionsWithoutKey
-  } = body as Record<string, unknown>
+  // Sanitize: strip any top-level fields that shouldn't be forwarded
+  const { api_key: _stripped, ..._clean } = body as Record<string, unknown>
+  void _stripped
 
   // Build query params for the Python server
   const queryParams = new URLSearchParams()
 
   if (body.trade_date) queryParams.set('trade_date', String(body.trade_date))
-
   if (provider) queryParams.set('llm_provider', provider)
+
+  const providerKey = provider as LLMProvider | undefined
+  const defaults = providerKey ? DEFAULT_MODELS[providerKey] : null
 
   if (body.deep_think_llm) {
     queryParams.set('deep_think_llm', String(body.deep_think_llm))
-  } else if (provider) {
-    // Default to the provider's standard deep model
-    const defaults = DEFAULT_MODELS[provider as LLMProvider]
-    if (defaults) queryParams.set('deep_think_llm', defaults.deep)
+  } else if (defaults) {
+    queryParams.set('deep_think_llm', defaults.deep)
   }
 
   if (body.quick_think_llm) {
     queryParams.set('quick_think_llm', String(body.quick_think_llm))
-  } else if (provider) {
-    const defaults = DEFAULT_MODELS[provider as LLMProvider]
-    if (defaults) queryParams.set('quick_think_llm', defaults.quick)
+  } else if (defaults) {
+    queryParams.set('quick_think_llm', defaults.quick)
   }
 
   if (typeof body.max_debate_rounds === 'number') {
@@ -196,7 +156,7 @@ export async function POST(
   const queryString = queryParams.toString()
   const url = `${TA_BASE}/analyze/${encodeURIComponent(ticker)}${queryString ? '?' + queryString : ''}`
 
-  // Build the body sent to Python server — includes api_key, excludes params sent as query
+  // Body sent to Python server — api_key only if user provided it
   const upstreamBody: Record<string, unknown> = {
     llm_provider: provider,
     deep_think_llm: queryParams.get('deep_think_llm'),
@@ -207,7 +167,6 @@ export async function POST(
     trade_date: body.trade_date,
   }
 
-  // Only include api_key if the user provided it — never use a server-side default
   if (apiKey) {
     upstreamBody.api_key = apiKey
   }
