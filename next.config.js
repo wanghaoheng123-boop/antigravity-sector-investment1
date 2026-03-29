@@ -9,7 +9,10 @@ const nextConfig = {
     remotePatterns: [
       { protocol: 'https', hostname: '**' }
     ]
-  }
+  },
+  // Prevent Next.js from bundling yahoo-finance2 and its broken ESM shim.
+  // Resolved by Node.js natively at runtime instead.
+  serverExternalPackages: ['yahoo-finance2'],
 }
 
 module.exports = withPWA(nextConfig)

@@ -80,6 +80,13 @@ type Payload = {
     total: number
     weights: string
     pillars: { name: string; score: number; detail: string }[]
+    rubricLines?: string[]
+    benchmarkNote?: string
+  }
+  dataLineage?: {
+    sources: string[]
+    refresh: string
+    statementNote: string
   }
   earnings?: {
     nextEarningsDate: string | null
@@ -114,7 +121,7 @@ function fmtPct(n: number | null | undefined) {
 }
 
 export default function QuantLabPanel({ ticker }: { ticker: string }) {
-  const [sub, setSub] = useState<'summary' | 'technicals' | 'financials' | 'valuation' | 'frameworks'>('summary')
+  const [sub, setSub] = useState<'summary' | 'technicals' | 'financials' | 'valuation' | 'frameworks' | 'llm'>('summary')
   const [adv, setAdv] = useState<{
     winRate252d: number | null
     betaVsSpyLogReturns: number | null
@@ -132,6 +139,64 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
   const [err, setErr] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [summaryOpen, setSummaryOpen] = useState(false)
+  const [openFrameworkId, setOpenFrameworkId] = useState<string | null>(null)
+
+  // LLM analysis state
+  const [llmResult, setLlmResult] = useState<Record<string, unknown> | null>(null)
+  const [llmError, setLlmError] = useState<string | null>(null)
+  const [llmLoading, setLlmLoading] = useState(false)
+  const [llmProvider, setLlmProvider] = useState('openai')
+  const [llmDeepModel, setLlmDeepModel] = useState('gpt-5.2')
+  const [llmQuickModel, setLlmQuickModel] = useState('gpt-5-mini')
+  const [llmDebateRounds, setLlmDebateRounds] = useState(1)
+  const [llmRiskRounds, setLlmRiskRounds] = useState(1)
+  const [llmTradeDate, setLlmTradeDate] = useState('')
+  const [llmHasRun, setLlmHasRun] = useState(false)
+
+  const runLlmAnalysis = useCallback(async () => {
+    setLlmLoading(true)
+    setLlmError(null)
+    setLlmResult(null)
+    setLlmHasRun(false)
+    try {
+      const body: Record<string, unknown> = {
+        llm_provider: llmProvider,
+        deep_think_llm: llmDeepModel,
+        quick_think_llm: llmQuickModel,
+        max_debate_rounds: llmDebateRounds,
+        max_risk_discuss_rounds: llmRiskRounds,
+      }
+      if (llmTradeDate) body.trade_date = llmTradeDate
+      const r = await fetch(`/api/trading-agents/${encodeURIComponent(ticker)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const j = await r.json()
+      if (!r.ok) throw new Error(j.error || j.details || r.statusText)
+      setLlmResult(j)
+      setLlmHasRun(true)
+    } catch (e) {
+      setLlmError(e instanceof Error ? e.message : 'LLM analysis failed')
+    } finally {
+      setLlmLoading(false)
+    }
+  }, [ticker, llmProvider, llmDeepModel, llmQuickModel, llmDebateRounds, llmRiskRounds, llmTradeDate])
+
+  const fetchLlmLatest = useCallback(async () => {
+    setLlmLoading(true)
+    setLlmError(null)
+    try {
+      const r = await fetch(`/api/trading-agents/${encodeURIComponent(ticker)}`)
+      const j = await r.json()
+      if (r.ok) {
+        setLlmResult(j)
+        setLlmHasRun(true)
+      }
+    } catch {} finally {
+      setLlmLoading(false)
+    }
+  }, [ticker])
 
   const [wacc, setWacc] = useState(0.09)
   const [tg, setTg] = useState(0.025)
@@ -238,6 +303,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
             ['technicals', 'Technicals & RS'],
             ['financials', 'Financials'],
             ['valuation', 'Valuation'],
+            ['llm', 'LLM Agents'],
             ['frameworks', 'Codex frameworks'],
           ] as const
         ).map(([k, label]) => (
@@ -276,6 +342,20 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
               <strong className="text-slate-400">Bloomberg bridge</strong> for spot prices (see README). Models are transparent heuristics, not an unbiased oracle.
               Combine with primary filings (10-K/20-F), your data vendor, and compliance review before acting.
             </p>
+
+            {data.dataLineage && (
+              <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-3 space-y-2 text-[10px] text-slate-500 leading-relaxed">
+                <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Data lineage</div>
+                <p className="font-mono text-slate-400">Fetched (this payload): {data.fetchedAt}</p>
+                <ul className="list-disc pl-4 space-y-1">
+                  {data.dataLineage.sources.map((s) => (
+                    <li key={s}>{s}</li>
+                  ))}
+                </ul>
+                <p>{data.dataLineage.refresh}</p>
+                <p className="text-slate-600">{data.dataLineage.statementNote}</p>
+              </div>
+            )}
 
             {data.priceSources?.bloomberg != null && data.priceSources.bloomberg > 0 && (
               <div className="flex flex-wrap items-center gap-2 text-[11px] text-amber-200/90 bg-amber-950/20 border border-amber-500/25 rounded-lg px-3 py-2">
@@ -365,6 +445,21 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                     </div>
                   ))}
                 </div>
+                {data.researchScore.rubricLines && data.researchScore.rubricLines.length > 0 && (
+                  <div className="mt-4 rounded-lg border border-slate-800/80 bg-slate-950/50 p-3 space-y-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">How to read the score</div>
+                    <ul className="text-[10px] text-slate-500 space-y-1.5 list-disc pl-4 leading-relaxed">
+                      {data.researchScore.rubricLines.map((line) => (
+                        <li key={line}>{line}</li>
+                      ))}
+                    </ul>
+                    {data.researchScore.benchmarkNote && (
+                      <p className="text-[10px] text-slate-600 leading-relaxed pt-1 border-t border-slate-800/60">
+                        {data.researchScore.benchmarkNote}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
 
@@ -377,7 +472,10 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                   <Metric label="Op. margin" value={fmtPct(data.health.operatingMargin)} />
                   <Metric label="Debt/Eq" value={data.health.debtToEquity != null ? data.health.debtToEquity.toFixed(2) : '—'} />
                   <Metric label="Current ratio" value={data.health.currentRatio != null ? data.health.currentRatio.toFixed(2) : '—'} />
+                  <Metric label="Quick ratio" value={data.health.quickRatio != null ? data.health.quickRatio.toFixed(2) : '—'} />
+                  <Metric label="EBITDA margin" value={fmtPct(data.health.ebitdaMargin)} />
                   <Metric label="Rev. growth" value={fmtPct(data.health.revenueGrowth)} />
+                  <Metric label="EPS growth" value={fmtPct(data.health.earningsGrowth)} />
                 </div>
               </div>
               <div className="rounded-xl border border-slate-800 p-4 space-y-3">
@@ -390,6 +488,11 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                       buy={data.bands.buyZoneHigh}
                       sell={data.bands.sellZoneLow}
                     />
+                    {data.bands.buyZoneHigh != null && (
+                      <p className="text-[10px] text-emerald-200/80 font-mono">
+                        Mechanical buy-zone ceiling (margin-of-safety line for this model): ≤ ${data.bands.buyZoneHigh.toFixed(2)}
+                      </p>
+                    )}
                     {data.signal && (
                       <div className="rounded-lg bg-slate-900/60 border border-slate-800 p-3">
                         <div className="text-xs font-semibold text-blue-300">{data.signal.label}</div>
@@ -732,38 +835,243 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
               Seven <strong className="text-slate-400">framework themes</strong> distilled from your Antigravity Investment Codex (pillars / sprints). They are checklists for disciplined thinking — not impersonations of any investor and not trade instructions.
             </p>
             <div className="space-y-3">
-              {CODEX_FRAMEWORKS.map((f) => (
-                <details
-                  key={f.id}
-                  className="group rounded-xl border border-slate-800 bg-slate-900/30 open:bg-slate-900/50 transition-colors"
-                >
-                  <summary className="cursor-pointer list-none flex items-center gap-3 p-4">
-                    {fwIcon(f.id)}
-                    <div className="flex-1">
-                      <div className="text-sm font-semibold text-white">{f.title}</div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">{f.themes[0]}</div>
-                    </div>
-                    <ChevronDown className="w-4 h-4 text-slate-500 group-open:rotate-180 transition-transform" />
-                  </summary>
-                  <div className="px-4 pb-4 pt-0 space-y-3 border-t border-slate-800/60">
-                    <ul className="text-xs text-slate-400 space-y-1 list-disc pl-4">
-                      {f.themes.map((t) => (
-                        <li key={t}>{t}</li>
-                      ))}
-                    </ul>
-                    <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Checklist</div>
-                    <ul className="text-xs text-slate-300 space-y-1.5">
-                      {f.checklist.map((c) => (
-                        <li key={c} className="flex gap-2">
-                          <span className="text-blue-500 shrink-0">▸</span>
-                          <span>{c}</span>
-                        </li>
-                      ))}
-                    </ul>
+              {CODEX_FRAMEWORKS.map((f) => {
+                const open = openFrameworkId === f.id
+                return (
+                  <div
+                    key={f.id}
+                    className={`rounded-xl border border-slate-800 bg-slate-900/30 transition-colors ${open ? 'bg-slate-900/50' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setOpenFrameworkId(open ? null : f.id)}
+                      className="cursor-pointer w-full flex items-center gap-3 p-4 text-left"
+                    >
+                      {fwIcon(f.id)}
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-semibold text-white">{f.title}</div>
+                        <div className="text-[11px] text-slate-500 mt-0.5 truncate">{f.themes[0]}</div>
+                      </div>
+                      <ChevronDown className={`w-4 h-4 text-slate-500 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
+                    </button>
+                    {open && (
+                      <div className="px-4 pb-4 pt-0 space-y-3 border-t border-slate-800/60">
+                        <ul className="text-xs text-slate-400 space-y-1 list-disc pl-4">
+                          {f.themes.map((t) => (
+                            <li key={t}>{t}</li>
+                          ))}
+                        </ul>
+                        <div className="text-[11px] text-slate-500 uppercase tracking-wider font-semibold">Checklist</div>
+                        <ul className="text-xs text-slate-300 space-y-1.5">
+                          {f.checklist.map((c) => (
+                            <li key={c} className="flex gap-2">
+                              <span className="text-blue-500 shrink-0">▸</span>
+                              <span>{c}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </div>
-                </details>
-              ))}
+                )
+              })}
             </div>
+          </div>
+        )}
+
+        {sub === 'llm' && (
+          <div className="space-y-5">
+            {/* Header + config */}
+            <div className="rounded-xl border border-amber-500/20 bg-amber-950/10 p-4 space-y-3">
+              <div className="flex items-start gap-2">
+                <span className="text-amber-400 text-sm mt-0.5">⚡</span>
+                <div>
+                  <p className="text-xs text-amber-200/90 font-semibold">LLM Multi-Agent Analysis</p>
+                  <p className="text-[10px] text-amber-200/60 mt-0.5 leading-relaxed">
+                    Powered by{' '}
+                    <a href="https://github.com/TauricResearch/TradingAgents" target="_blank" rel="noopener" className="underline">
+                      TradingAgents
+                    </a>{' '}
+                    — 7 specialized agents (market, sentiment, news, fundamentals, bull/bear researchers, risk management, portfolio manager) debate
+                    and produce a BUY / OVERWEIGHT / HOLD / UNDERWEIGHT / SELL rating.
+                    Requires an LLM API key in the Python server environment.
+                  </p>
+                </div>
+              </div>
+
+              {/* Provider & model */}
+              <div className="grid grid-cols-2 gap-3 text-xs">
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-wide">Provider</span>
+                  <select
+                    value={llmProvider}
+                    onChange={(e) => setLlmProvider(e.target.value)}
+                    className="rounded bg-slate-900 border border-slate-700 text-slate-200 px-2 py-1.5 font-mono"
+                  >
+                    <option value="openai">OpenAI (GPT)</option>
+                    <option value="google">Google (Gemini)</option>
+                    <option value="anthropic">Anthropic (Claude)</option>
+                    <option value="xai">xAI (Grok)</option>
+                    <option value="openrouter">OpenRouter</option>
+                    <option value="ollama">Ollama (local)</option>
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-wide">Deep model</span>
+                  <input
+                    type="text"
+                    value={llmDeepModel}
+                    onChange={(e) => setLlmDeepModel(e.target.value)}
+                    className="rounded bg-slate-900 border border-slate-700 text-slate-200 px-2 py-1.5 font-mono"
+                    placeholder="gpt-5.2"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-wide">Quick model</span>
+                  <input
+                    type="text"
+                    value={llmQuickModel}
+                    onChange={(e) => setLlmQuickModel(e.target.value)}
+                    className="rounded bg-slate-900 border border-slate-700 text-slate-200 px-2 py-1.5 font-mono"
+                    placeholder="gpt-5-mini"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-wide">Trade date (YYYY-MM-DD)</span>
+                  <input
+                    type="text"
+                    value={llmTradeDate}
+                    onChange={(e) => setLlmTradeDate(e.target.value)}
+                    className="rounded bg-slate-900 border border-slate-700 text-slate-200 px-2 py-1.5 font-mono"
+                    placeholder="today if blank"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-wide">Debate rounds</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={llmDebateRounds}
+                    onChange={(e) => setLlmDebateRounds(parseInt(e.target.value) || 1)}
+                    className="rounded bg-slate-900 border border-slate-700 text-slate-200 px-2 py-1.5 font-mono"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  <span className="text-slate-400 text-[10px] uppercase tracking-wide">Risk debate rounds</span>
+                  <input
+                    type="number"
+                    min={1}
+                    max={5}
+                    value={llmRiskRounds}
+                    onChange={(e) => setLlmRiskRounds(parseInt(e.target.value) || 1)}
+                    className="rounded bg-slate-900 border border-slate-700 text-slate-200 px-2 py-1.5 font-mono"
+                  />
+                </label>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={runLlmAnalysis}
+                  disabled={llmLoading}
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white text-xs font-semibold transition-colors"
+                >
+                  {llmLoading ? '⏳ Running agents…' : '▶ Run LLM Analysis'}
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchLlmLatest}
+                  disabled={llmLoading}
+                  className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-slate-700 text-xs text-slate-300 hover:bg-slate-800 disabled:opacity-50 transition-colors"
+                >
+                  Load cached result
+                </button>
+              </div>
+            </div>
+
+            {/* Error */}
+            {llmError && (
+              <div className="rounded-xl border border-red-500/30 bg-red-950/20 p-4 text-xs text-red-200/90">
+                <strong className="text-red-300">Error:</strong> {llmError}
+                {llmError.includes('OPENAI_API_KEY') || llmError.includes('api_key') || llmError.includes('Not set') ? (
+                  <p className="text-red-300/60 mt-2">
+                    No LLM key detected. Set <code className="text-red-200 font-mono">OPENAI_API_KEY</code> (or your provider's equivalent) in your environment before starting the Python server.
+                  </p>
+                ) : null}
+              </div>
+            )}
+
+            {/* Result */}
+            {llmHasRun && llmResult && !llmError && (
+              <div className="space-y-4">
+                {/* Decision banner */}
+                {(llmResult as any).decision && (
+                  <div
+                    className={`rounded-xl border p-5 text-center ${
+                      (llmResult as any).decision_grade === 'BUY'
+                        ? 'border-green-500/40 bg-green-950/20'
+                        : (llmResult as any).decision_grade === 'SELL'
+                          ? 'border-red-500/40 bg-red-950/20'
+                          : 'border-yellow-500/40 bg-yellow-950/10'
+                    }`}
+                  >
+                    <div className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">Final decision</div>
+                    <div className="text-4xl font-bold font-mono text-white">
+                      {(llmResult as any).decision_grade}
+                    </div>
+                    <div className="text-xs text-slate-400 mt-1">
+                      {(llmResult as any).confidence_label} confidence &middot;{' '}
+                      {(llmResult as any).elapsed_seconds}s &middot;{' '}
+                      {(llmResult as any).llm_provider}/{(llmResult as any).model_used || '—'}
+                    </div>
+                  </div>
+                )}
+
+                {/* Analyst reports */}
+                {['market_report', 'sentiment_report', 'news_report', 'fundamentals_report'].map(
+                  (field) => {
+                    const val = (llmResult as any)[field]
+                    if (!val) return null
+                    return (
+                      <div key={field} className="rounded-xl border border-slate-800 p-4">
+                        <div className="text-[10px] uppercase tracking-widest text-slate-400 mb-2">
+                          {field.replace('_', ' ')}
+                        </div>
+                        <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">{val}</p>
+                      </div>
+                    )
+                  }
+                )}
+
+                {/* Investment plan */}
+                {(llmResult as any).investment_plan && (
+                  <div className="rounded-xl border border-blue-500/20 bg-blue-950/10 p-4">
+                    <div className="text-[10px] uppercase tracking-widest text-blue-400 mb-2">Investment plan</div>
+                    <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {(llmResult as any).investment_plan}
+                    </p>
+                  </div>
+                )}
+
+                {/* Risk debate + final decision */}
+                {(llmResult as any).final_trade_decision && (
+                  <div className="rounded-xl border border-violet-500/20 bg-violet-950/10 p-4">
+                    <div className="text-[10px] uppercase tracking-widest text-violet-400 mb-2">Risk debate + final decision</div>
+                    <p className="text-xs text-slate-300 leading-relaxed whitespace-pre-wrap">
+                      {(llmResult as any).final_trade_decision}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Not run yet */}
+            {!llmHasRun && !llmError && !llmLoading && (
+              <div className="text-center py-10 text-slate-600 text-sm">
+                Click <strong className="text-slate-400">Run LLM Analysis</strong> to start the multi-agent debate.
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -827,36 +1135,62 @@ function PriceRail({
   buy: number | null
   sell: number | null
 }) {
-  const lo = Math.min(price, buy ?? price, fair, sell ?? price) * 0.92
-  const hi = Math.max(price, buy ?? price, fair, sell ?? price) * 1.08
-  const pos = (x: number) => `${((x - lo) / (hi - lo)) * 100}%`
+  const xs = [price, fair, buy, sell].filter((v): v is number => v != null && Number.isFinite(v))
+  const rawLo = Math.min(...xs)
+  const rawHi = Math.max(...xs)
+  const pad = Math.max(rawHi - rawLo, rawLo * 0.002) * 0.08
+  const lo = rawLo - pad
+  const hi = rawHi + pad
+  const span = hi - lo || 1
+  const pos = (x: number) => `${((x - lo) / span) * 100}%`
 
   return (
-    <div className="relative h-14 rounded-lg bg-slate-950 border border-slate-800 overflow-hidden">
-      <div className="absolute inset-y-0 w-px bg-slate-700" style={{ left: pos(fair) }} title="Fair value" />
-      {buy != null && (
-        <div
-          className="absolute inset-y-0 w-0.5 bg-emerald-500/90"
-          style={{ left: pos(buy) }}
-          title="Buy zone ceiling"
-        />
-      )}
-      {sell != null && (
-        <div
-          className="absolute inset-y-0 w-0.5 bg-rose-500/90"
-          style={{ left: pos(sell) }}
-          title="Sell zone floor"
-        />
-      )}
-      <div
-        className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white border-2 border-blue-500 shadow-lg"
-        style={{ left: pos(price) }}
-        title={`Spot ${price.toFixed(2)}`}
-      />
-      <div className="absolute bottom-1 left-2 right-2 flex justify-between text-[9px] text-slate-600 font-mono">
-        <span>Low</span>
-        <span>High</span>
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] font-mono text-slate-300">
+        <div>
+          <span className="text-slate-600 block text-[9px] uppercase tracking-wide">Buy ceiling</span>
+          {buy != null ? `$${buy.toFixed(2)}` : '—'}
+        </div>
+        <div>
+          <span className="text-slate-600 block text-[9px] uppercase tracking-wide">Fair mid</span>${fair.toFixed(2)}
+        </div>
+        <div>
+          <span className="text-slate-600 block text-[9px] uppercase tracking-wide">Spot</span>${price.toFixed(2)}
+        </div>
+        <div>
+          <span className="text-slate-600 block text-[9px] uppercase tracking-wide">Sell floor</span>
+          {sell != null ? `$${sell.toFixed(2)}` : '—'}
+        </div>
       </div>
+      <div className="relative h-14 rounded-lg bg-slate-950 border border-slate-800 overflow-hidden">
+        <div className="absolute inset-y-0 w-px bg-slate-600 z-[1]" style={{ left: pos(fair) }} title={`Fair ${fair.toFixed(2)}`} />
+        {buy != null && (
+          <div
+            className="absolute inset-y-0 w-0.5 bg-emerald-500/90 z-[1]"
+            style={{ left: pos(buy) }}
+            title={`Buy zone ceiling ${buy.toFixed(2)}`}
+          />
+        )}
+        {sell != null && (
+          <div
+            className="absolute inset-y-0 w-0.5 bg-rose-500/90 z-[1]"
+            style={{ left: pos(sell) }}
+            title={`Sell zone floor ${sell.toFixed(2)}`}
+          />
+        )}
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3 h-3 rounded-full bg-white border-2 border-blue-500 shadow-lg z-[2]"
+          style={{ left: pos(price) }}
+          title={`Spot ${price.toFixed(2)}`}
+        />
+        <div className="absolute bottom-1 left-2 right-2 flex justify-between text-[9px] text-slate-600 font-mono">
+          <span>${lo.toFixed(2)}</span>
+          <span>${hi.toFixed(2)}</span>
+        </div>
+      </div>
+      <p className="text-[10px] text-slate-600 leading-relaxed">
+        Rail span ${lo.toFixed(2)}–${hi.toFixed(2)} (padded). Cheaper vs model when price is at or below the buy ceiling; above sell floor = richer vs model.
+      </p>
     </div>
   )
 }

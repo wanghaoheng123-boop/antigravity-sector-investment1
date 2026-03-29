@@ -37,3 +37,7 @@ yarn-error.log*
 /public/workbox-*.js.map
 
 .vercel
+
+# Cloud / Finder duplicate filenames
+* 2.*
+* 3.*

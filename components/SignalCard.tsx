@@ -15,7 +15,14 @@ const DIRECTION_CONFIG = {
   WATCH: { label: 'WATCH', bg: 'bg-blue-900/20', border: 'border-blue-500/30', text: 'text-blue-400', dot: 'bg-blue-400' },
 }
 
+function sessionDirectionLabel(direction: PriceSignal['direction']): string {
+  if (direction === 'BUY') return 'UP'
+  if (direction === 'SELL') return 'DOWN'
+  return 'FLAT'
+}
+
 function formatRiskReward(signal: PriceSignal): string {
+  if (signal.source === 'yahoo-session') return '—'
   if (signal.direction === 'BUY') {
     const risk = signal.entry - signal.stopLoss
     const reward = signal.target - signal.entry
@@ -34,14 +41,23 @@ function formatRiskReward(signal: PriceSignal): string {
 export default function SignalCard({ signal, color, compact = false }: SignalCardProps) {
   const config = DIRECTION_CONFIG[signal.direction]
   const riskPct = formatRiskReward(signal)
+  const session = signal.source === 'yahoo-session'
+  const headline = session ? sessionDirectionLabel(signal.direction) : config.label
+  const barLabel = session ? 'Move scale' : 'Confidence'
 
   if (compact) {
     return (
       <div className={`rounded-xl p-4 border ${config.bg} ${config.border} hover:brightness-110 transition-all`}>
         <div className="flex items-center justify-between mb-2">
-          <span className={`text-xs font-bold ${config.text} tracking-widest`}>{config.label}</span>
+          <span className={`text-xs font-bold ${config.text} tracking-widest`}>{headline}</span>
           <span className="text-xs text-slate-400 font-mono">{signal.etf}</span>
         </div>
+        {session && signal.sessionChangePct != null && (
+          <div className="text-[11px] font-mono text-slate-300 mb-1">
+            {signal.sessionChangePct >= 0 ? '+' : ''}
+            {signal.sessionChangePct.toFixed(2)}% vs prior close
+          </div>
+        )}
         <div className="flex items-center gap-2 mb-1">
           <div className="w-full bg-slate-800 rounded-full h-1.5">
             <div
@@ -51,7 +67,10 @@ export default function SignalCard({ signal, color, compact = false }: SignalCar
           </div>
           <span className="text-xs font-mono" style={{ color }}>{signal.confidence}%</span>
         </div>
-        <div className="text-xs text-slate-500">{signal.sector} · {signal.timeframe}</div>
+        <div className="text-xs text-slate-500">
+          {signal.sector} · {signal.timeframe}
+          {session ? ' · Yahoo' : ''}
+        </div>
       </div>
     )
   }
@@ -61,8 +80,10 @@ export default function SignalCard({ signal, color, compact = false }: SignalCar
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          <div className={`w-2.5 h-2.5 rounded-full ${config.dot} animate-pulse`} />
-          <span className={`text-sm font-bold tracking-widest ${config.text}`}>{config.label} SIGNAL</span>
+          <div className={`w-2.5 h-2.5 rounded-full ${config.dot} ${session ? '' : 'animate-pulse'}`} />
+          <span className={`text-sm font-bold tracking-widest ${config.text}`}>
+            {session ? `${headline} SESSION` : `${config.label} SIGNAL`}
+          </span>
         </div>
         <span className="text-xs text-slate-500 bg-slate-800 px-2 py-1 rounded font-mono">{signal.timeframe}</span>
       </div>
@@ -90,25 +111,53 @@ export default function SignalCard({ signal, color, compact = false }: SignalCar
         <div>
           <div className="text-2xl font-bold text-white font-mono">{signal.etf}</div>
           <div className="text-sm text-slate-400">{signal.sector}</div>
-          <div className="text-xs text-slate-600 mt-0.5">Confidence Score</div>
+          <div className="text-xs text-slate-600 mt-0.5">{barLabel}</div>
+          {session && signal.sessionChangePct != null && (
+            <div className="text-xs font-mono text-slate-300 mt-1">
+              Δ {signal.sessionChangePct >= 0 ? '+' : ''}
+              {signal.sessionChangePct.toFixed(2)}% (Yahoo)
+            </div>
+          )}
+          {session && signal.quoteTime && (
+            <div className="text-[10px] text-slate-600 mt-0.5 font-mono">
+              Quote {new Date(signal.quoteTime).toLocaleString()}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Levels */}
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="bg-slate-900/60 rounded-lg p-2.5 border border-slate-800">
-          <div className="text-xs text-slate-500">Entry</div>
-          <div className="font-mono text-sm text-white font-semibold">${signal.entry.toFixed(2)}</div>
+      {session ? (
+        <div className="grid grid-cols-2 gap-2 mb-4">
+          <div className="bg-slate-900/60 rounded-lg p-2.5 border border-slate-800">
+            <div className="text-xs text-slate-500">Last price</div>
+            <div className="font-mono text-sm text-white font-semibold">${signal.entry.toFixed(2)}</div>
+          </div>
+          <div className="bg-slate-900/60 rounded-lg p-2.5 border border-slate-800">
+            <div className="text-xs text-slate-500">Session vs prior</div>
+            <div className="font-mono text-sm text-white font-semibold">
+              {signal.sessionChangePct != null
+                ? `${signal.sessionChangePct >= 0 ? '+' : ''}${signal.sessionChangePct.toFixed(2)}%`
+                : '—'}
+            </div>
+          </div>
         </div>
-        <div className="bg-red-950/30 rounded-lg p-2.5 border border-red-900/40">
-          <div className="text-xs text-slate-500">Stop Loss</div>
-          <div className="font-mono text-sm text-red-400 font-semibold">${signal.stopLoss.toFixed(2)}</div>
+      ) : (
+        <div className="grid grid-cols-3 gap-2 mb-4">
+          <div className="bg-slate-900/60 rounded-lg p-2.5 border border-slate-800">
+            <div className="text-xs text-slate-500">Entry</div>
+            <div className="font-mono text-sm text-white font-semibold">${signal.entry.toFixed(2)}</div>
+          </div>
+          <div className="bg-red-950/30 rounded-lg p-2.5 border border-red-900/40">
+            <div className="text-xs text-slate-500">Stop Loss</div>
+            <div className="font-mono text-sm text-red-400 font-semibold">${signal.stopLoss.toFixed(2)}</div>
+          </div>
+          <div className="bg-green-950/30 rounded-lg p-2.5 border border-green-900/40">
+            <div className="text-xs text-slate-500">Target</div>
+            <div className="font-mono text-sm text-green-400 font-semibold">${signal.target.toFixed(2)}</div>
+          </div>
         </div>
-        <div className="bg-green-950/30 rounded-lg p-2.5 border border-green-900/40">
-          <div className="text-xs text-slate-500">Target</div>
-          <div className="font-mono text-sm text-green-400 font-semibold">${signal.target.toFixed(2)}</div>
-        </div>
-      </div>
+      )}
 
       {/* Risk/Reward */}
       <div className="flex items-center justify-between text-xs text-slate-500 mb-3">

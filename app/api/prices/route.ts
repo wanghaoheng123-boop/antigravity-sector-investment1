@@ -3,8 +3,16 @@ import { SECTORS } from '@/lib/sectors'
 import YahooFinance from 'yahoo-finance2'
 import { fetchBloombergQuotesViaBridge, isBloombergBridgeConfigured } from '@/lib/data/bloomberg/bridgeClient'
 import { mergeYahooAndBloomberg } from '@/lib/data/mergeQuotes'
+import { normalizedChangePercent } from '@/lib/yahooQuoteFields'
 
 const yahooFinance = new YahooFinance()
+
+function isoQuoteTime(q: { regularMarketTime?: unknown }): string | null {
+  const t = q.regularMarketTime
+  if (t instanceof Date) return t.toISOString()
+  if (typeof t === 'number' && Number.isFinite(t)) return new Date(t * 1000).toISOString()
+  return null
+}
 
 export async function GET(request: NextRequest) {
   const url = new URL(request.url)
@@ -27,12 +35,17 @@ export async function GET(request: NextRequest) {
       ticker: q.symbol,
       price: q.regularMarketPrice || 0,
       change: q.regularMarketChange || 0,
-      changePct: q.regularMarketChangePercent !== undefined ? q.regularMarketChangePercent : 0,
+      changePct: normalizedChangePercent(
+        q.regularMarketChangePercent,
+        q.regularMarketChange,
+        q.regularMarketPrice
+      ),
       volume: q.regularMarketVolume || 0,
       high52w: q.fiftyTwoWeekHigh || 0,
       low52w: q.fiftyTwoWeekLow || 0,
       pe: q.trailingPE || 0,
       marketCap: q.marketCap ? (q.marketCap / 1e9).toFixed(1) + 'B' : 'N/A',
+      quoteTime: isoQuoteTime(q),
     }))
 
     const quotes = mergeYahooAndBloomberg(yahooQuotes, bbMap)

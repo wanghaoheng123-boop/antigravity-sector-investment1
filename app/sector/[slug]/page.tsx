@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -9,8 +9,10 @@ import DarkPoolPanel from '@/components/DarkPoolPanel'
 import NewsFeed from '@/components/NewsFeed'
 import WatchlistButton from '@/components/WatchlistButton'
 import { SECTORS, getSectorBySlug } from '@/lib/sectors'
-import { generateSignals, generateDarkPoolPrints, getNewsForSector } from '@/lib/mockData'
-import { PriceSignal, DarkPoolPrint } from '@/lib/sectors'
+import { generateDarkPoolPrints } from '@/lib/mockData'
+import { DarkPoolPrint } from '@/lib/sectors'
+import type { DarkPoolAnalysis } from '@/lib/darkpool'
+import { buildSingleSessionSignal } from '@/lib/sessionSignalsFromQuotes'
 
 const KLineChart = dynamic(() => import('@/components/KLineChart'), { ssr: false })
 
@@ -27,49 +29,72 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
 
   const [candles, setCandles] = useState<Candle[]>([])
   const [darkPoolMarkers, setDarkPoolMarkers] = useState<DpMarker[]>([])
-  const [quote, setQuote] = useState<{ price: number; change: number; changePct: number; volume: number; high52w: number; low52w: number; pe: number } | null>(null)
-  const [signal, setSignal] = useState<PriceSignal | null>(null)
+  const [quote, setQuote] = useState<{
+    price: number
+    change: number
+    changePct: number
+    volume: number
+    high52w: number
+    low52w: number
+    pe: number
+    quoteTime?: string | null
+  } | null>(null)
   const [darkPoolPrints, setDarkPoolPrints] = useState<DarkPoolPrint[]>([])
+  const [darkPoolApiData, setDarkPoolApiData] = useState<DarkPoolAnalysis | null>(null)
+  const [darkPoolApiLoading, setDarkPoolApiLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('chart')
   const [activeRange, setActiveRange] = useState('6M')
 
-  const news = getNewsForSector(sector.slug)
-
   useEffect(() => {
-    // Fetch chart data
     fetch(`/api/chart/${sector.etf}`)
-      .then(r => r.json())
-      .then(data => {
+      .then((r) => r.json())
+      .then((data) => {
         setCandles(data.candles ?? [])
         setDarkPoolMarkers(data.darkPoolMarkers ?? [])
       })
       .catch(() => {})
+  }, [sector.etf])
 
-    // Fetch price
-    fetch('/api/prices')
-      .then(r => r.json())
-      .then(data => {
-        const q = data.quotes?.find((q: { ticker: string }) => q.ticker === sector.etf)
-        if (q) setQuote(q)
-      })
-      .catch(() => {})
-
-    // Generate signal and dark pool
-    const sigs = generateSignals()
-    setSignal(sigs.find(s => s.etf === sector.etf) ?? null)
-    setDarkPoolPrints(generateDarkPoolPrints(sector.etf))
-  }, [sector.etf, sector.slug])
-
-  // News markers for chart
-  const newsMarkers = news.slice(0, 3).map((n, i) => {
-    if (candles.length === 0) return null
-    const idx = Math.max(0, candles.length - 20 - i * 15)
-    return {
-      time: candles[idx]?.time ?? '',
-      headline: n.title,
-      impact: 'positive' as const,
+  useEffect(() => {
+    const pull = () => {
+      fetch(`/api/prices?tickers=${encodeURIComponent(sector.etf)}`)
+        .then((r) => r.json())
+        .then((data) => {
+          const q = data.quotes?.find((x: { ticker: string }) => x.ticker === sector.etf)
+          if (q) setQuote(q)
+        })
+        .catch(() => {})
     }
-  }).filter(Boolean) as { time: string; headline: string; impact: 'positive' | 'negative' | 'neutral' }[]
+    pull()
+    const id = setInterval(pull, 15000)
+    return () => clearInterval(id)
+  }, [sector.etf])
+
+  useEffect(() => {
+    setDarkPoolPrints(generateDarkPoolPrints(sector.etf))
+  }, [sector.etf])
+
+  useEffect(() => {
+    if (activeTab !== 'darkpool') return
+    setDarkPoolApiLoading(true)
+    setDarkPoolApiData(null)
+    fetch(`/api/darkpool/${encodeURIComponent(sector.etf)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setDarkPoolApiData(data)
+        setDarkPoolApiLoading(false)
+      })
+      .catch(() => {
+        setDarkPoolApiLoading(false)
+      })
+  }, [sector.etf, activeTab])
+
+  const signal = useMemo(
+    () => (quote ? buildSingleSessionSignal(sector.etf, quote) : null),
+    [quote, sector.etf]
+  )
+
+  // newsMarkers removed — live news headlines now shown in NewsFeed panel below chart
 
   const isUp = (quote?.changePct ?? 0) >= 0
 
@@ -191,7 +216,6 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
                   <KLineChart
                     candles={candles}
                     darkPoolMarkers={darkPoolMarkers}
-                    newsMarkers={newsMarkers}
                     color={sector.color}
                     ticker={sector.etf}
                     range={activeRange as '1M' | '3M' | '6M' | '1Y'}
@@ -208,7 +232,13 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
             {/* Dark Pool tab */}
             {activeTab === 'darkpool' && (
               <div>
-                <DarkPoolPanel prints={darkPoolPrints} ticker={sector.etf} color={sector.color} />
+                <DarkPoolPanel
+                  prints={darkPoolPrints}
+                  ticker={sector.etf}
+                  color={sector.color}
+                  apiData={darkPoolApiData}
+                  apiLoading={darkPoolApiLoading}
+                />
               </div>
             )}
 
@@ -218,7 +248,7 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
                 <h3 className="text-sm font-semibold text-slate-300 mb-4">
                   {sector.name} Sector — Latest News
                 </h3>
-                <NewsFeed news={news} color={sector.color} />
+                <NewsFeed sector={sector.slug} color={sector.color} />
               </div>
             )}
           </div>
@@ -228,7 +258,9 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
             {/* Signal Card */}
             {signal && (
               <div>
-                <h3 className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-3">Price Signal</h3>
+                <h3 className="text-xs font-medium text-slate-500 uppercase tracking-widest mb-3">
+                  Session vs prior close (Yahoo)
+                </h3>
                 <SignalCard signal={signal} color={sector.color} />
               </div>
             )}

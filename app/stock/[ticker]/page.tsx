@@ -9,6 +9,7 @@ import QuantLabPanel from '@/components/stock/QuantLabPanel'
 import NewsFeed from '@/components/NewsFeed'
 import { getNewsForSector, generateDarkPoolPrints } from '@/lib/mockData'
 import { DarkPoolPrint } from '@/lib/sectors'
+import type { DarkPoolAnalysis } from '@/lib/darkpool'
 
 const KLineChart = dynamic(() => import('@/components/KLineChart'), { ssr: false })
 
@@ -26,6 +27,8 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
   const [darkPoolMarkers, setDarkPoolMarkers] = useState<DpMarker[]>([])
   const [quote, setQuote] = useState<{ price: number; change: number; changePct: number; marketCap: string } | null>(null)
   const [darkPoolPrints, setDarkPoolPrints] = useState<DarkPoolPrint[]>([])
+  const [darkPoolApiData, setDarkPoolApiData] = useState<DarkPoolAnalysis | null>(null)
+  const [darkPoolApiLoading, setDarkPoolApiLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'chart' | 'quant' | 'darkpool' | 'news'>('chart')
   const [activeRange, setActiveRange] = useState('1Y')
   const [loading, setLoading] = useState(true)
@@ -63,9 +66,22 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
 
     // 3. Mock dynamic dark pools & news strictly for presentation density
     setDarkPoolPrints(generateDarkPoolPrints(ticker))
-    
+
     return () => clearInterval(intervalId)
   }, [ticker])
+
+  useEffect(() => {
+    if (activeTab !== 'darkpool') return
+    setDarkPoolApiLoading(true)
+    setDarkPoolApiData(null)
+    fetch(`/api/darkpool/${encodeURIComponent(ticker)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        setDarkPoolApiData(data)
+        setDarkPoolApiLoading(false)
+      })
+      .catch(() => setDarkPoolApiLoading(false))
+  }, [ticker, activeTab])
 
   const news = getNewsForSector('technology') // Fallback generic news
   
@@ -209,7 +225,13 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
 
             {/* Dark Pool tab */}
             {activeTab === 'darkpool' && (
-              <DarkPoolPanel prints={darkPoolPrints} ticker={ticker} color={color} />
+              <DarkPoolPanel
+                prints={darkPoolPrints}
+                ticker={ticker}
+                color={color}
+                apiData={darkPoolApiData}
+                apiLoading={darkPoolApiLoading}
+              />
             )}
 
             {/* News tab */}

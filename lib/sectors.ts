@@ -162,6 +162,8 @@ export function getSectorByEtf(etf: string): Sector | undefined {
 export type SignalDirection = 'BUY' | 'SELL' | 'HOLD' | 'WATCH'
 export type Timeframe = '1D' | '1W' | '1M' | '3M'
 
+export type PriceSignalSource = 'yahoo-session' | 'demo'
+
 export interface PriceSignal {
   sector: string
   etf: string
@@ -173,6 +175,12 @@ export interface PriceSignal {
   timeframe: Timeframe
   rationale: string
   timestamp: string
+  /** When set, card explains that direction is session up/down/flat, not a trade call. */
+  source?: PriceSignalSource
+  /** Yahoo regularMarketTime when available. */
+  quoteTime?: string | null
+  /** Raw session change % used for stats (Yahoo-normalized). */
+  sessionChangePct?: number
 }
 
 // Dark pool print type

@@ -1,24 +1,25 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import Link from 'next/link'
 import SectorCard from '@/components/SectorCard'
 import SignalCard from '@/components/SignalCard'
 import PriceTicker from '@/components/PriceTicker'
 import { SECTORS } from '@/lib/sectors'
-import { generateSignals, BRIEFS } from '@/lib/mockData'
+import { BRIEFS } from '@/lib/mockData'
 import { PriceSignal } from '@/lib/sectors'
+import { buildSessionSignalsFromQuotes } from '@/lib/sessionSignalsFromQuotes'
 
 interface Quote {
   ticker: string
   price: number
   change: number
   changePct: number
+  quoteTime?: string | null
 }
 
 export default function HomePage() {
   const [quotes, setQuotes] = useState<Record<string, Quote>>({})
-  const [signals] = useState<PriceSignal[]>(() => generateSignals())
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [countdown, setCountdown] = useState(15)
   const [activeFilter, setActiveFilter] = useState<string>('ALL')
@@ -51,14 +52,23 @@ export default function HomePage() {
     return () => clearInterval(t)
   }, [])
 
-  const topBuy = signals.filter(s => s.direction === 'BUY').sort((a, b) => b.confidence - a.confidence).slice(0, 3)
-  const topSell = signals.filter(s => s.direction === 'SELL').sort((a, b) => b.confidence - a.confidence).slice(0, 2)
+  const signals = useMemo(() => buildSessionSignalsFromQuotes(quotes), [quotes])
+
+  const topBuy = signals.filter((s) => s.direction === 'BUY').sort((a, b) => Math.abs(b.sessionChangePct ?? 0) - Math.abs(a.sessionChangePct ?? 0)).slice(0, 3)
+  const topSell = signals.filter((s) => s.direction === 'SELL').sort((a, b) => Math.abs(b.sessionChangePct ?? 0) - Math.abs(a.sessionChangePct ?? 0)).slice(0, 2)
   const topSignals = [...topBuy, ...topSell]
 
   const signalMap = signals.reduce<Record<string, PriceSignal>>((acc, s) => {
     acc[s.etf] = s
     return acc
   }, {})
+
+  const medianAbsMove = useMemo(() => {
+    const xs = signals.map((s) => Math.abs(s.sessionChangePct ?? 0)).sort((a, b) => a - b)
+    if (!xs.length) return 0
+    const m = Math.floor(xs.length / 2)
+    return xs.length % 2 ? xs[m] : (xs[m - 1] + xs[m]) / 2
+  }, [signals])
 
   const tickerItems = SECTORS.map(s => ({
     ticker: s.etf,
@@ -89,9 +99,10 @@ export default function HomePage() {
             <span className="gradient-text">Sector Intelligence</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            <strong className="text-slate-300 font-medium">Live Yahoo quotes</strong> for sector ETFs refresh every 15s. Signal cards, sparklines, and dark-pool panels are{' '}
-            <strong className="text-amber-200/90 font-medium">illustrative demos</strong> (deterministic per calendar day, not trading algorithms). Use{' '}
-            <strong className="text-slate-300 font-medium">Quant Lab</strong> on any stock page for fundamentals and formulas sourced from Yahoo data.
+            <strong className="text-slate-300 font-medium">Yahoo Finance quotes</strong> for sector ETFs refresh every 15s (same vendor print between sessions; weekend/holiday = last session). Top cards show{' '}
+            <strong className="text-slate-300 font-medium">session direction vs prior close</strong> only — not trade recommendations. Sparklines use prior close → last price (two real points). Dark pool blocks remain{' '}
+            <strong className="text-amber-200/90 font-medium">illustrative</strong>. Use{' '}
+            <strong className="text-slate-300 font-medium">Quant Lab</strong> for fundamentals (Yahoo + stated models).
           </p>
         </div>
 
@@ -99,8 +110,8 @@ export default function HomePage() {
         <section>
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="text-lg font-bold text-white">Top Signals Today</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Demo only — stable for the UTC day; not live trade recommendations</p>
+              <h2 className="text-lg font-bold text-white">Largest session moves</h2>
+              <p className="text-xs text-slate-500 mt-0.5">From Yahoo change % (normalized). UP/DOWN = vs prior close — not buy/sell advice.</p>
             </div>
             <Link href="/briefs" className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
               View all briefs →
@@ -121,10 +132,10 @@ export default function HomePage() {
         {/* Market Overview Stats */}
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'Sectors Bullish', value: signals.filter(s => s.direction === 'BUY').length, of: 11, color: '#00d084' },
-            { label: 'Sectors Bearish', value: signals.filter(s => s.direction === 'SELL').length, of: 11, color: '#ff4757' },
-            { label: 'Avg Confidence', value: `${Math.round(signals.reduce((a, b) => a + b.confidence, 0) / (signals.length || 1))}%`, color: '#3b82f6', noOf: true },
-            { label: 'Signals Generated', value: signals.length, of: undefined, color: '#a855f7' },
+            { label: 'Sectors up (session)', value: signals.filter((s) => s.direction === 'BUY').length, of: 11, color: '#00d084' },
+            { label: 'Sectors down (session)', value: signals.filter((s) => s.direction === 'SELL').length, of: 11, color: '#ff4757' },
+            { label: 'Flat (|Δ| ≤ 0.01%)', value: signals.filter((s) => s.direction === 'HOLD').length, of: 11, color: '#eab308' },
+            { label: 'Median |move|', value: `${medianAbsMove.toFixed(2)}%`, color: '#3b82f6' },
           ].map((stat, i) => (
             <div key={i} className="rounded-xl border border-slate-800 p-4 bg-slate-900/40">
               <div className="text-2xl font-bold font-mono" style={{ color: stat.color }}>
@@ -143,8 +154,8 @@ export default function HomePage() {
               <h2 className="text-lg font-bold text-white">All Sectors</h2>
               <p className="text-xs text-slate-500 mt-0.5">Click any sector to view K-line chart, dark pool data, and signals</p>
             </div>
-            <div className="flex gap-2">
-              {['ALL', 'BUY', 'SELL', 'HOLD', 'WATCH'].map(f => (
+            <div className="flex gap-2 flex-wrap">
+              {['ALL', 'BUY', 'SELL', 'HOLD'].map((f) => (
                 <button
                   key={f}
                   onClick={() => setActiveFilter(f)}
@@ -176,7 +187,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between mb-5">
             <div>
               <h2 className="text-lg font-bold text-white">Recent Intelligence Briefs</h2>
-              <p className="text-xs text-slate-500 mt-0.5">In-depth sector analysis with embedded signals and data</p>
+              <p className="text-xs text-slate-500 mt-0.5">Sample editorial briefs for UI — not verified research or live data.</p>
             </div>
             <Link href="/briefs" className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
               View archive →
@@ -231,7 +242,7 @@ export default function HomePage() {
             {[
               { icon: '📊', title: 'K-Line Chart', desc: 'Candlestick charts with EMA overlays, volume, dark pool print markers, and news event pins.' },
               { icon: '🔵', title: 'Dark Pool Intelligence', desc: 'Block prints, sweep orders, institutional flow sentiment, and VWAP premium/discount analysis.' },
-              { icon: '⚡', title: 'Price Signals', desc: 'Entry, stop loss, and target levels with confidence scores and risk/reward ratios.' },
+              { icon: '⚡', title: 'Session & Quant Lab', desc: 'Markets page: Yahoo session change vs prior close. Stock pages: Quant Lab for fundamentals, DCF sliders, and mechanical bands from Yahoo data.' },
             ].map((item, i) => (
               <div key={i} className="text-center space-y-2">
                 <div className="text-2xl">{item.icon}</div>

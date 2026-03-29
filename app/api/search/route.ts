@@ -35,6 +35,17 @@ function looksLikeTickerToken(s: string): string | null {
   return yahooSymbolFromParam(t)
 }
 
+/** When Yahoo `search()` fails or returns nothing, map common names → ticker for direct `quote()`. */
+const COMPANY_NAME_HINTS: Record<string, string> = {
+  apple: 'AAPL',
+  microsoft: 'MSFT',
+  amazon: 'AMZN',
+  google: 'GOOGL',
+  tesla: 'TSLA',
+  meta: 'META',
+  nvidia: 'NVDA',
+}
+
 async function resolveDirectQuote(raw: string) {
   const symbol = looksLikeTickerToken(raw)
   if (!symbol) return null
@@ -66,6 +77,15 @@ async function resolveDirectQuote(raw: string) {
 }
 
 export async function GET(request: NextRequest) {
+  try {
+    return await handleSearchGet(request)
+  } catch (error) {
+    console.error('[Search API] Unhandled error:', error)
+    return NextResponse.json({ quotes: [], error: 'search_unavailable' })
+  }
+}
+
+async function handleSearchGet(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const q = (searchParams.get('q') || '').trim()
   const limitRaw = parseInt(searchParams.get('limit') || '40', 10)
@@ -100,6 +120,12 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('[Search API] Yahoo search failed:', error)
+  }
+
+  const hintTicker = COMPANY_NAME_HINTS[q.toLowerCase()]
+  if (out.length === 0 && hintTicker) {
+    const direct = await resolveDirectQuote(hintTicker)
+    if (direct) pushUnique(direct)
   }
 
   if (out.length === 0 || looksLikeTickerToken(q)) {

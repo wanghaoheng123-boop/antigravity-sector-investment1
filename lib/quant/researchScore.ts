@@ -140,6 +140,8 @@ export function computeResearchScore(i: ResearchScoreInput): {
   pillars: PillarScore[]
   total: number
   weights: string
+  rubricLines: string[]
+  benchmarkNote: string
 } {
   const v = valueFromPe(i.forwardPE ?? i.trailingPE)
   const valuePillar: PillarScore = {
@@ -157,7 +159,15 @@ export function computeResearchScore(i: ResearchScoreInput): {
   const w = [0.2, 0.25, 0.2, 0.2, 0.15]
   const total = clamp01(pillars.reduce((s, p, idx) => s + p.score * w[idx], 0))
 
-  return { pillars, total, weights }
+  const rubricLines = [
+    '0–100 is a weighted blend of the five pillar cards below. ~50 means “neutral vs these crude rules”, not “average stock” or fair value.',
+    'Rough guide: under ~40 often means several weak pillars (e.g. stretched multiple, poor 60d RS vs SPY, or soft quality). Above ~65 means multiple pillars align — still not a buy/sell call.',
+    'Only the “Relative strength (vs SPY)” pillar uses a benchmark (60d excess vs SPY). Value, quality, momentum, and band fit are symbol-specific Yahoo fields, not vs a peer basket.',
+  ]
+  const benchmarkNote =
+    'Automatic same-industry peer comparison is not in this build. Compare manually to a sector ETF (e.g. XLK) or your comps list; use Quant Lab tables for the inputs behind each pillar.'
+
+  return { pillars, total, weights, rubricLines, benchmarkNote }
 }
 
 /** Map price vs buy/sell bands to 0..1 position. */

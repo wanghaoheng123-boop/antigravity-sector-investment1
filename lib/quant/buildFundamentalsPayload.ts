@@ -367,6 +367,16 @@ export function buildFundamentalsPayload(
       position: posIn52w,
     },
     fibRetracement: fib,
+    dataLineage: {
+      sources: [
+        'Yahoo Finance quoteSummary: profile, financialData, defaultKeyStatistics, statements (balance, income, cash flow), calendarEvents, earningsHistory, recommendations.',
+        'Yahoo Finance daily chart (~800 sessions) for volatility, technicals, 52-week range, and SPY alignment for relative strength.',
+      ],
+      refresh:
+        'Each GET to /api/fundamentals recomputes from Yahoo at request time (edge cache may reuse up to ~2 minutes). Quant Lab “Refresh” triggers a new request with your valuation sliders.',
+      statementNote:
+        'Statement dates and mapped fields follow Yahoo’s aggregation; verify filing time and restatements in primary issuer filings (e.g. SEC EDGAR).',
+    },
   }
 }
 

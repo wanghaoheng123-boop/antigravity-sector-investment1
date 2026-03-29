@@ -4,7 +4,6 @@ import Link from 'next/link'
 import { Sector } from '@/lib/sectors'
 import { PriceSignal } from '@/lib/sectors'
 import Sparkline from '@/components/Sparkline'
-import { generateSparkline } from '@/lib/mockData'
 
 interface SectorCardProps {
   sector: Sector
@@ -25,8 +24,12 @@ const SIGNAL_CONFIG = {
 
 export default function SectorCard({ sector, quote, signal }: SectorCardProps) {
   const isUp = (quote?.changePct ?? 0) >= 0
-  const sparkData = generateSparkline(sector.etf)
+  const sparkData =
+    quote && quote.price > 0 && Number.isFinite(quote.change)
+      ? [quote.price - quote.change, quote.price]
+      : []
   const sigCfg = signal ? SIGNAL_CONFIG[signal.direction] : null
+  const session = signal?.source === 'yahoo-session'
 
   return (
     <Link href={`/sector/${sector.slug}`}>
@@ -54,7 +57,13 @@ export default function SectorCard({ sector, quote, signal }: SectorCardProps) {
           </div>
           {signal && sigCfg && (
             <span className={`text-[10px] font-bold tracking-widest px-1.5 py-0.5 rounded ${sigCfg.bg} ${sigCfg.text}`}>
-              {signal.direction}
+              {session
+                ? signal.direction === 'BUY'
+                  ? 'UP'
+                  : signal.direction === 'SELL'
+                    ? 'DOWN'
+                    : 'FLAT'
+                : signal.direction}
             </span>
           )}
         </div>
@@ -78,15 +87,21 @@ export default function SectorCard({ sector, quote, signal }: SectorCardProps) {
               </div>
             )}
           </div>
-          {/* 14-day sparkline */}
-          <Sparkline data={sparkData} color={sector.color} width={72} height={28} />
+          {sparkData.length >= 2 ? (
+            <div className="flex flex-col items-end gap-0.5">
+              <Sparkline data={sparkData} color={sector.color} width={72} height={28} />
+              <span className="text-[8px] text-slate-600 font-mono text-right">prior→last</span>
+            </div>
+          ) : (
+            <span className="text-[9px] text-slate-600 self-end">—</span>
+          )}
         </div>
 
         {/* Signal confidence bar */}
         {signal && (
           <div className="relative mb-2.5">
             <div className="flex justify-between text-[10px] mb-1 text-slate-600">
-              <span>Confidence</span>
+              <span>{session ? 'Move scale' : 'Confidence'}</span>
               <span style={{ color: sector.color }} className="font-mono">{signal.confidence}%</span>
             </div>
             <div className="w-full h-1 bg-slate-800 rounded-full overflow-hidden">

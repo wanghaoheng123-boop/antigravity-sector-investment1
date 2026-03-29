@@ -10,6 +10,7 @@ interface Quote {
   change: number
   changePct: number
   marketCap: string
+  quoteTime?: string | null
 }
 
 export default function HeatmapPage() {
@@ -63,10 +64,13 @@ export default function HeatmapPage() {
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-3xl font-bold text-white mb-2">Sector Heatmap</h1>
-            <p className="text-slate-400">Relative performance across all 11 GICS sectors.</p>
+            <p className="text-slate-400">Session change % vs prior close from Yahoo (normalized in /api/prices).</p>
+            <p className="text-xs text-slate-600 mt-2 max-w-2xl leading-relaxed">
+              Between exchange sessions the vendor quote usually does not move; the clock above is when we last polled, not a new auction print. Colors map fixed % buckets (0, ±1%, ±2%).
+            </p>
           </div>
           <div className="text-sm text-slate-500 font-mono">
-            {lastUpdate ? `Live · ${lastUpdate.toLocaleTimeString()}` : 'Connecting...'}
+            {lastUpdate ? `Poll · ${lastUpdate.toLocaleTimeString()}` : 'Connecting...'}
           </div>
         </div>
 

@@ -10,6 +10,8 @@ export type UnifiedQuote = {
   low52w: number
   pe: number
   marketCap: string
+  /** Vendor last trade / regular session time when available (ISO). */
+  quoteTime?: string | null
   bid?: number
   ask?: number
   dataSource: 'bloomberg' | 'yahoo' | 'mixed'
@@ -45,6 +47,7 @@ export function mergeYahooAndBloomberg(
         low52w: bb.low52w || y.low52w,
         pe: bb.pe || y.pe,
         marketCap: bb.marketCap !== 'N/A' ? bb.marketCap : y.marketCap,
+        quoteTime: y.quoteTime ?? null,
         bid: bb.bid,
         ask: bb.ask,
         dataSource: 'bloomberg',
