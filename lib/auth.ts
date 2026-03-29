@@ -22,10 +22,31 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
   )
 }
 
+function getSecret(): string {
+  const secret = process.env.NEXTAUTH_SECRET
+  if (secret) return secret
+
+  const isProduction =
+    process.env.VERCEL_URL != null ||
+    process.env.NODE_ENV === 'production' ||
+    (process.env.NEXTAUTH_URL != null && !process.env.NEXTAUTH_URL.includes('localhost'))
+
+  if (isProduction) {
+    throw new Error(
+      'NEXTAUTH_SECRET environment variable is not set. ' +
+      'Set it to a cryptographically random string (at least 32 chars) in your Vercel project settings. ' +
+      'See: https://next-auth.js.org/configuration/options#secret'
+    )
+  }
+
+  // Only allow fallback in local development
+  return 'dev-secret-fallback-not-for-production-use'
+}
+
 export const authOptions: NextAuthOptions = {
   providers,
   session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
-  secret: process.env.NEXTAUTH_SECRET || 'dev-secret-fallback-change-in-production-at-least-32-chars',
+  secret: getSecret(),
   pages: {
     signIn: '/auth/signin',
   },
