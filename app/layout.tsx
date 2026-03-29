@@ -14,14 +14,14 @@ export const viewport: Viewport = {
 }
 
 export const metadata: Metadata = {
-  title: 'Antigravity Sector Intelligence',
+  title: 'QUANTAN — Market Intelligence',
   description: 'Institutional-grade market intelligence across all 11 GICS sectors — real-time prices, K-line charts, dark pool data, and curated signal briefs.',
   keywords: 'stock market, sector analysis, dark pool, institutional trading, market signals',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Antigravity',
+    title: 'QUANTAN',
   },
 }
 
@@ -46,11 +46,9 @@ export default function RootLayout({
           <header className="sticky top-0 z-50 border-b border-slate-800/50 bg-slate-950/90 backdrop-blur-xl">
             <div className="max-w-7xl mx-auto px-4 min-h-14 flex flex-wrap items-center justify-between gap-y-2 py-2">
               <a href="/" className="flex items-center gap-2.5">
-                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-xs font-bold">
-                  AG
-                </div>
-                <span className="font-bold text-white text-sm">Antigravity</span>
-                <span className="text-slate-500 text-sm hidden sm:block">/ Sector Intelligence</span>
+                <img src="/quantan-logo.svg" alt="QUANTAN" className="h-7 w-auto" />
+                <span className="font-bold text-white text-sm">QUANTAN</span>
+                <span className="text-slate-500 text-sm hidden sm:block">/ Market Intelligence</span>
               </a>
               <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 sm:gap-6">
                 <Link href="/" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Markets</Link>
@@ -71,7 +69,7 @@ export default function RootLayout({
           <ComplianceBanner />
           <footer className="border-t border-slate-800 mt-12 py-10">
             <div className="max-w-7xl mx-auto px-4 text-center text-xs text-slate-600">
-              <p>Antigravity Sector Intelligence · Research and visualization stack for sector & commodity ETFs</p>
+              <p>QUANTAN Market Intelligence · Research and visualization platform for sector & commodity ETFs</p>
               <p className="mt-1">
                 Data for informational purposes only — not investment advice. Dark pool panels and some signals are simulated for demonstration; verify with licensed data vendors before trading.
               </p>

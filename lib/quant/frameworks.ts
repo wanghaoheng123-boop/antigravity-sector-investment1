@@ -1,5 +1,5 @@
 /**
- * Investment *framework* themes aligned with the Antigravity Codex pillars.
+ * Investment *framework* themes aligned with the QUANTAN Codex pillars.
  * These are educational checklists — not personalized advice and not attributed quotations.
  */
 

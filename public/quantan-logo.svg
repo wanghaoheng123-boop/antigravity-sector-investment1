@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 100" width="320" height="100" role="img" aria-label="QUANTAN">
+  <title>QUANTAN</title>
+  <desc>QUANTAN  Quantitative Market Intelligence Platform</desc>
+
+  <defs>
+    <!-- Glow filter for the cyan bars -->
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle glow for dot -->
+    <filter id="dotGlow" x="-80%" y="-80%" width="260%" height="260%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="4" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Dark background panel for the logo mark -->
+  <rect x="0" y="0" width="100" height="100" rx="16" fill="#0A0E1A"/>
+
+  <!-- Stepped candlestick bars forming a stylized Q  ascending -->
+  <!-- Bar 1: short -->
+  <rect x="18" y="62" width="14" height="20" rx="2" fill="#00D4FF" opacity="0.6" filter="url(#glow)"/>
+  <!-- Bar 2: medium -->
+  <rect x="36" y="50" width="14" height="32" rx="2" fill="#00D4FF" opacity="0.8" filter="url(#glow)"/>
+  <!-- Bar 3: tall -->
+  <rect x="54" y="30" width="14" height="52" rx="2" fill="#00D4FF" filter="url(#glow)"/>
+
+  <!-- The circular dot  bottom right of the Q opening, suggesting a data point -->
+  <circle cx="78" cy="72" r="10" fill="#00D4FF" filter="url(#dotGlow)"/>
+  <!-- Inner dot highlight -->
+  <circle cx="76" cy="70" r="4" fill="white" opacity="0.5"/>
+
+  <!-- Q stroke arc  connects the bars visually into a Q shape -->
+  <path
+    d="M 18 42 Q 18 18 46 18 Q 76 18 82 48"
+    fill="none"
+    stroke="#00D4FF"
+    stroke-width="5"
+    stroke-linecap="round"
+    filter="url(#glow)"
+  />
+
+  <!-- Text: QUANTAN -->
+  <text
+    x="112"
+    y="40"
+    font-family="'JetBrains Mono', 'Fira Code', 'SF Mono', monospace"
+    font-size="26"
+    font-weight="700"
+    letter-spacing="4"
+    fill="#FFFFFF"
+  >QUANTAN</text>
+
+  <!-- Tagline -->
+  <text
+    x="114"
+    y="60"
+    font-family="'Inter', 'SF Pro Display', system-ui, sans-serif"
+    font-size="10"
+    font-weight="400"
+    letter-spacing="2"
+    fill="#64748B"
+  >MARKET INTELLIGENCE</text>
+
+  <!-- Accent line under tagline -->
+  <rect x="114" y="68" width="180" height="1.5" rx="0.75" fill="#00D4FF" opacity="0.6"/>
+</svg>

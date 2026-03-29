@@ -26,7 +26,7 @@ export default function ComplianceBanner() {
         {open && (
           <div className="mt-3 text-xs text-slate-500 space-y-2 leading-relaxed border-t border-slate-800/80 pt-3">
             <p>
-              Antigravity Sector Intelligence is a research and visualization tool. It does not route orders, hold customer funds, or provide personalized recommendations
+              QUANTAN is a research and visualization tool. It does not route orders, hold customer funds, or provide personalized recommendations
               regulated under MiFID II, SEC RIA, or equivalent regimes unless you separately engage a licensed entity.
             </p>
             <p>

@@ -1,4 +1,4 @@
-// Core sector data and types for Antigravity Sector Intelligence
+// Core sector data and types for QUANTAN Market Intelligence
 
 export interface Sector {
   slug: string

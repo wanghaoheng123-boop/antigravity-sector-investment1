@@ -5,7 +5,7 @@ import SignInButtons from './SignInButtons'
 import { getAuthOptions } from '@/lib/auth'
 
 export const metadata = {
-  title: 'Sign in · Antigravity',
+  title: 'Sign in · QUANTAN',
 }
 
 export default async function SignInPage() {

@@ -787,7 +787,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
         {data && sub === 'valuation' && (
           <div className="space-y-6">
             <p className="text-xs text-slate-500">
-              Adjust growth and discount assumptions; the server recomputes DCF scenarios and volatility-adaptive bands. This mirrors the <em>bear / base / bull</em> tables in your Antigravity memos — not a single “true” fair value.
+              Adjust growth and discount assumptions; the server recomputes DCF scenarios and volatility-adaptive bands. This mirrors the <em>bear / base / bull</em> tables in your QUANTAN memos — not a single “true” fair value.
             </p>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -868,7 +868,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
         {data && sub === 'frameworks' && (
           <div className="space-y-4">
             <p className="text-xs text-slate-500 leading-relaxed">
-              Seven <strong className="text-slate-400">framework themes</strong> distilled from your Antigravity Investment Codex (pillars / sprints). They are checklists for disciplined thinking — not impersonations of any investor and not trade instructions.
+              Seven <strong className="text-slate-400">framework themes</strong> distilled from your QUANTAN Investment Codex (pillars / sprints). They are checklists for disciplined thinking — not impersonations of any investor and not trade instructions.
             </p>
             <div className="space-y-3">
               {CODEX_FRAMEWORKS.map((f) => {
@@ -942,7 +942,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                   <p className="text-[10px] text-amber-200/80 font-semibold uppercase tracking-wide">Your API Key (Required)</p>
                 </div>
                 <p className="text-[10px] text-amber-200/60 leading-relaxed">
-                  Your key goes directly to the LLM provider — never through the Antigravity server.
+                  Your key goes directly to the LLM provider — never through the QUANTAN server.
                   Stored only in your browser session (<code className="font-mono">sessionStorage</code>, cleared on tab close).
                   <a
                     href="https://platform.openai.com/api-keys"
@@ -1088,7 +1088,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                 {llmError.includes('OPENAI_API_KEY') || llmError.includes('api_key') || llmError.includes('Not set') || llmError.includes('secret is too short') ? (
                   <p className="text-red-300/60 mt-2">
                     The Python server could not authenticate with the LLM provider. Make sure your API key is valid and has credits/quotas available.
-                    The key is sent directly to {llmProvider === 'openai' ? 'OpenAI' : llmProvider === 'anthropic' ? 'Anthropic' : 'your chosen provider'} — Antigravity never sees or stores it.
+                    The key is sent directly to {llmProvider === 'openai' ? 'OpenAI' : llmProvider === 'anthropic' ? 'Anthropic' : 'your chosen provider'} — QUANTAN never sees or stores it.
                   </p>
                 ) : null}
               </div>

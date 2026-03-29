@@ -1,4 +1,4 @@
-# Antigravity Sector Intelligence
+# QUANTAN — Market Intelligence
 
 Next.js 14 app for **GICS sector ETFs**, **commodity proxies**, **live quotes** (Yahoo Finance via `yahoo-finance2`, with **optional Bloomberg spot prices** through a self-hosted bridge), **candlestick charts** (Lightweight Charts), **desk-style quote strip**, **watchlists** (browser storage; keyed by account when signed in), and **NextAuth** sign-in with **Google** and/or **GitHub**.
 
@@ -16,7 +16,7 @@ Next.js 14 app for **GICS sector ETFs**, **commodity proxies**, **live quotes** 
 ## Quick start
 
 ```bash
-cd antigravity-sectors
+cd quantan
 npm install
 cp .env.example .env.local
 # Edit .env.local — at minimum set NEXTAUTH_SECRET and NEXTAUTH_URL; add OAuth vars to enable sign-in.
@@ -108,4 +108,4 @@ This codebase is a **frontend + API route** shell. Real “floor-grade” moneti
 
 ---
 
-**Antigravity** — sector & commodity intelligence UI for traders and researchers building their own data and compliance layer on top.
+**QUANTAN** — sector & commodity intelligence UI for traders and researchers building their own data and compliance layer on top.
