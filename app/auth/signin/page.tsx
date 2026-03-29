@@ -2,14 +2,14 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth/next'
 import { redirect } from 'next/navigation'
 import SignInButtons from './SignInButtons'
-import { authOptions } from '@/lib/auth'
+import { getAuthOptions } from '@/lib/auth'
 
 export const metadata = {
   title: 'Sign in · Antigravity',
 }
 
 export default async function SignInPage() {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession(getAuthOptions())
   if (session) redirect('/')
 
   const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)

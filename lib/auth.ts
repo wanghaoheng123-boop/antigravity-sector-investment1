@@ -22,57 +22,57 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
   )
 }
 
+// Lazy getter — throws at request time (not build time) if secret missing in production
 function getSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET
   if (secret) return secret
 
-  const isProduction =
-    process.env.VERCEL_URL != null ||
+  const isProd =
+    (process.env.VERCEL_URL != null && !process.env.VERCEL_URL.includes('vercel-git')) ||
     process.env.NODE_ENV === 'production' ||
     (process.env.NEXTAUTH_URL != null && !process.env.NEXTAUTH_URL.includes('localhost'))
 
-  if (isProduction) {
+  if (isProd) {
     throw new Error(
-      'NEXTAUTH_SECRET environment variable is not set. ' +
-      'Set it to a cryptographically random string (at least 32 chars) in your Vercel project settings. ' +
-      'See: https://next-auth.js.org/configuration/options#secret'
+      '[NextAuth] NEXTAUTH_SECRET is not set. ' +
+      'Set it in Vercel: Project Settings → Environment Variables → NEXTAUTH_SECRET. ' +
+      'Generate: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"'
     )
   }
 
-  // Only allow fallback in local development
-  return 'dev-secret-fallback-not-for-production-use'
+  return 'development-only-fallback-do-not-use-in-production'
 }
 
-export const authOptions: NextAuthOptions = {
-  providers,
-  session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
-  secret: getSecret(),
-  pages: {
-    signIn: '/auth/signin',
-  },
-  callbacks: {
-    async jwt({ token, user, account, profile }) {
-      if (user) {
-        token.email = user.email
-        token.name = user.name
-        token.picture = user.image
-      }
-      if (account && profile) {
-        token.name = (profile as { name?: string }).name ?? token.name
-        token.picture =
-          (profile as { image?: string; avatar_url?: string }).image
-          ?? (profile as { avatar_url?: string }).avatar_url
-          ?? token.picture
-      }
-      return token
+export function getAuthOptions(): NextAuthOptions {
+  return {
+    providers,
+    session: { strategy: 'jwt', maxAge: 30 * 24 * 60 * 60 },
+    secret: getSecret(),
+    pages: { signIn: '/auth/signin' },
+    callbacks: {
+      async jwt({ token, user, account, profile }) {
+        if (user) {
+          token.email = user.email
+          token.name = user.name
+          token.picture = user.image
+        }
+        if (account && profile) {
+          token.name = (profile as { name?: string }).name ?? token.name
+          token.picture =
+            (profile as { image?: string; avatar_url?: string }).image
+            ?? (profile as { avatar_url?: string }).avatar_url
+            ?? token.picture
+        }
+        return token
+      },
+      async session({ session, token }) {
+        if (session.user) {
+          session.user.name = (token.name as string | undefined) ?? session.user.name
+          session.user.email = (token.email as string | undefined) ?? session.user.email
+          session.user.image = (token.picture as string | undefined) ?? session.user.image
+        }
+        return session
+      },
     },
-    async session({ session, token }) {
-      if (session.user) {
-        session.user.name = (token.name as string | undefined) ?? session.user.name
-        session.user.email = (token.email as string | undefined) ?? session.user.email
-        session.user.image = (token.picture as string | undefined) ?? session.user.image
-      }
-      return session
-    },
-  },
+  }
 }
