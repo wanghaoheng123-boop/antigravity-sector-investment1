@@ -31,6 +31,7 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
   const [darkPoolApiLoading, setDarkPoolApiLoading] = useState(false)
   const [activeTab, setActiveTab] = useState<'chart' | 'quant' | 'darkpool' | 'news'>('chart')
   const [activeRange, setActiveRange] = useState('1Y')
+  const [activeIndicator, setActiveIndicator] = useState('ema')
   const [loading, setLoading] = useState(true)
 
   // Hardcode color to a generic blue for generic stocks, or we could map from their sector if needed.
@@ -171,18 +172,46 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
             ))}
           </div>
           {activeTab === 'chart' && (
-            <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-              {['1D', '1W', '1M', '3M', '6M', '1Y', '5Y', 'ALL'].map((r) => (
-                <button
-                  key={r}
-                  onClick={() => setActiveRange(r)}
-                  className={`px-3 py-1.5 text-xs rounded-md transition-all ${
-                    activeRange === r ? 'bg-slate-700 text-white' : 'text-slate-500 hover:text-slate-300'
-                  }`}
-                >
-                  {r}
-                </button>
-              ))}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Timeframe selector */}
+              <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+                {[
+                  ['5m', '5m'], ['15m', '15m'], ['1H', '1H'], ['4H', '4H'],
+                  ['1D', '1D'], ['1W', '1W'], ['1M', '1M'],
+                  ['3M', '3M'], ['6M', '6M'], ['1Y', '1Y'],
+                  ['2Y', '2Y'], ['5Y', '5Y'], ['ALL', 'ALL'],
+                ].map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setActiveRange(val)}
+                    className={`px-2.5 py-1 text-[11px] rounded-md transition-all ${
+                      activeRange === val ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {/* Indicator preset selector */}
+              <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
+                {[
+                  ['ema', 'EMA'],
+                  ['vwap', 'VWAP'],
+                  ['bb', 'BB'],
+                  ['fib', 'Fib'],
+                  ['all', 'All'],
+                ].map(([val, label]) => (
+                  <button
+                    key={val}
+                    onClick={() => setActiveIndicator(val)}
+                    className={`px-2.5 py-1 text-[11px] rounded-md transition-all ${
+                      activeIndicator === val ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -212,8 +241,19 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                     newsMarkers={newsMarkers}
                     color={color}
                     ticker={ticker}
-                    range={activeRange as any}
+                    range={activeRange}
                     showRSI
+                    indicators={
+                      activeIndicator === 'all'
+                        ? { ema20: true, ema50: true, vwap: true, bollingerBands: true, fibonacci: true }
+                        : activeIndicator === 'ema'
+                        ? { ema20: true, ema50: true, vwap: false, bollingerBands: false, fibonacci: false }
+                        : activeIndicator === 'vwap'
+                        ? { ema20: false, ema50: false, vwap: true, bollingerBands: false, fibonacci: false }
+                        : activeIndicator === 'bb'
+                        ? { ema20: false, ema50: false, vwap: false, bollingerBands: true, fibonacci: false }
+                        : { ema20: false, ema50: false, vwap: false, bollingerBands: false, fibonacci: true }
+                    }
                   />
                 ) : (
                   <div className="h-[480px] bg-slate-800/10 rounded-xl flex items-center justify-center border border-dashed border-slate-800">

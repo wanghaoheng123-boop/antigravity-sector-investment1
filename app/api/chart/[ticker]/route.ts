@@ -12,72 +12,52 @@ export async function GET(
   if (ticker === 'VIX') ticker = '^VIX'
   const { searchParams } = new URL(req.url)
   const range = searchParams.get('range') || '1Y'
-  
+
   try {
-    const period1 = new Date();
-    let interval: '5m' | '15m' | '1d' | '1wk' | '1mo' = '1d';
+    const period1 = new Date()
+    let interval: '5m' | '15m' | '1h' | '2h' | '4h' | '1d' | '1wk' | '1mo' = '1d'
 
     switch (range) {
-      case '1D':
-        period1.setDate(period1.getDate() - 3); // Extra days for weekend
-        interval = '5m';
-        break;
-      case '1W':
-        period1.setDate(period1.getDate() - 10);
-        interval = '15m';
-        break;
-      case '1M':
-        period1.setMonth(period1.getMonth() - 1);
-        interval = '1d';
-        break;
-      case '3M':
-        period1.setMonth(period1.getMonth() - 3);
-        interval = '1d';
-        break;
-      case '6M':
-        period1.setMonth(period1.getMonth() - 6);
-        interval = '1d';
-        break;
-      case '1Y':
-        period1.setFullYear(period1.getFullYear() - 1);
-        interval = '1d';
-        break;
-      case '5Y':
-        period1.setFullYear(period1.getFullYear() - 5);
-        interval = '1wk';
-        break;
-      case 'ALL':
-        period1.setFullYear(1970);
-        interval = '1mo';
-        break;
-      default:
-        period1.setFullYear(period1.getFullYear() - 1);
-        interval = '1d';
-        break;
+      // Intraday
+      case '5m':   period1.setDate(period1.getDate() - 2); interval = '5m';  break
+      case '15m':  period1.setDate(period1.getDate() - 3); interval = '15m'; break
+      case '1H':   period1.setDate(period1.getDate() - 5); interval = '1h';  break
+      case '4H':   period1.setDate(period1.getDate() - 10); interval = '1h';  break
+      // Short-term
+      case '1D':   period1.setDate(period1.getDate() - 14); interval = '1d'; break
+      case '1W':   period1.setDate(period1.getDate() - 30); interval = '1d'; break
+      // Medium-term
+      case '1M':   period1.setMonth(period1.getMonth() - 1); interval = '1d'; break
+      case '3M':   period1.setMonth(period1.getMonth() - 3); interval = '1d'; break
+      case '6M':   period1.setMonth(period1.getMonth() - 6); interval = '1d'; break
+      // Long-term
+      case '1Y':   period1.setFullYear(period1.getFullYear() - 1); interval = '1d'; break
+      case '2Y':   period1.setFullYear(period1.getFullYear() - 2); interval = '1wk'; break
+      case '5Y':   period1.setFullYear(period1.getFullYear() - 5); interval = '1wk'; break
+      case 'ALL':  period1.setFullYear(1970); interval = '1mo'; break
+      default:     period1.setFullYear(period1.getFullYear() - 1); interval = '1d'; break
     }
 
-    const result = await yahooFinance.chart(ticker, {
-      period1,
-      interval
-    })
+    const result = await yahooFinance.chart(ticker, { period1, interval })
 
     if (!result || !result.quotes || result.quotes.length === 0) {
       return NextResponse.json({ error: 'No historical data found for ticker' }, { status: 404 })
     }
 
+    const isIntraday = ['5m', '15m', '1h', '2h', '4h'].includes(interval)
+
     const candles = result.quotes.filter((c: any) => c.close !== null).map((c: any) => {
-      const isIntraday = interval === '5m' || interval === '15m';
-      const timeVal = isIntraday 
-        ? Math.floor(c.date.getTime() / 1000) 
-        : c.date.toISOString().split('T')[0];
+      const timeVal = isIntraday
+        ? Math.floor(c.date.getTime() / 1000)
+        : c.date.toISOString().split('T')[0]
 
       return {
-        time: timeVal, 
+        time: timeVal,
         open: c.open,
         high: c.high,
         low: c.low,
         close: c.close,
-        volume: c.volume
+        volume: c.volume,
       }
     })
 
@@ -87,7 +67,7 @@ export async function GET(
     )
 
     return NextResponse.json(
-      { ticker, candles, darkPoolMarkers },
+      { ticker, candles, darkPoolMarkers, range, interval },
       { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
     )
   } catch (error) {

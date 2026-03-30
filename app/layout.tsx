@@ -53,6 +53,7 @@ export default function RootLayout({
                 <Link href="/" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Markets</Link>
                 <Link href="/desk" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Desk</Link>
                 <Link href="/commodities" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Commodities</Link>
+                <Link href="/crypto/btc" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Crypto</Link>
                 <Link href="/heatmap" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Heatmap</Link>
                 <Link href="/briefs" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Briefs</Link>
                 <GlobalSearch />
