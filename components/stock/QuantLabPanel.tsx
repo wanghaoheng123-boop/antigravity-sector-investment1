@@ -122,6 +122,34 @@ function fmtPct(n: number | null | undefined) {
   return `${(n * 100).toFixed(2)}%`
 }
 
+function isLlmConnectivityCode(code: string | null): boolean {
+  if (!code) return false
+  return [
+    'backend_not_configured',
+    'backend_unreachable',
+    'failed_to_fetch',
+    'analysis_timeout',
+    'network_error',
+    'parse_error',
+  ].includes(code)
+}
+
+function isLlmProviderAuthFailure(code: string | null, message: string): boolean {
+  if (code === 'invalid_api_key' || code === 'provider_required_with_api_key') return true
+  if (code !== 'upstream_error') return false
+  const m = message.toLowerCase()
+  return (
+    /\b401\b/.test(m) ||
+    /\b403\b/.test(m) ||
+    m.includes('unauthorized') ||
+    m.includes('incorrect api key') ||
+    m.includes('invalid api key') ||
+    m.includes('invalid api_key') ||
+    m.includes('authentication') ||
+    (m.includes('api key') && (m.includes('invalid') || m.includes('incorrect')))
+  )
+}
+
 export default function QuantLabPanel({ ticker }: { ticker: string }) {
   const [sub, setSub] = useState<'summary' | 'technicals' | 'financials' | 'valuation' | 'frameworks' | 'llm'>('summary')
   const [adv, setAdv] = useState<{
@@ -146,6 +174,8 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
   // LLM analysis state
   const [llmResult, setLlmResult] = useState<Record<string, unknown> | null>(null)
   const [llmError, setLlmError] = useState<string | null>(null)
+  /** Machine-readable code from /api/trading-agents (for connectivity vs provider-auth UI). */
+  const [llmErrorCode, setLlmErrorCode] = useState<string | null>(null)
   const [llmLoading, setLlmLoading] = useState(false)
   const [llmProvider, setLlmProvider] = useState<LLMProvider>('openai')
   const [llmDeepModel, setLlmDeepModel] = useState('gpt-4o')
@@ -159,11 +189,15 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
 
   const runLlmAnalysis = useCallback(async () => {
     if (!llmApiKey.trim()) {
-      setLlmError('Please enter your API key first. It is stored only in your browser session and never sent to any server other than your chosen LLM provider.')
+      setLlmErrorCode('missing_api_key')
+      setLlmError(
+        'Please enter your API key first. It is stored only in your browser session and sent to your deployed TradingAgents backend for this run (then to the LLM provider).'
+      )
       return
     }
     setLlmLoading(true)
     setLlmError(null)
+    setLlmErrorCode(null)
     setLlmResult(null)
     setLlmHasRun(false)
     try {
@@ -181,12 +215,31 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const j = await r.json()
-      if (!r.ok) throw new Error(j.error || j.details || r.statusText)
+      let j: Record<string, unknown> = {}
+      try {
+        j = await r.json()
+      } catch {
+        setLlmErrorCode('parse_error')
+        setLlmError('Invalid response from analysis API. Check that TRADING_AGENTS_BASE points to a running TradingAgents server.')
+        return
+      }
+      if (!r.ok) {
+        const code = typeof j.error === 'string' ? j.error : 'unknown'
+        const msg =
+          (typeof j.message === 'string' && j.message) ||
+          (typeof j.details === 'string' && j.details) ||
+          (typeof j.error === 'string' && j.error) ||
+          r.statusText
+        setLlmErrorCode(code)
+        setLlmError(msg)
+        return
+      }
       setLlmResult(j)
       setLlmHasRun(true)
     } catch (e) {
-      setLlmError(e instanceof Error ? e.message : 'LLM analysis failed')
+      const msg = e instanceof Error ? e.message : 'LLM analysis failed'
+      setLlmErrorCode('network_error')
+      setLlmError(msg)
     } finally {
       setLlmLoading(false)
     }
@@ -195,14 +248,34 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
   const fetchLlmLatest = useCallback(async () => {
     setLlmLoading(true)
     setLlmError(null)
+    setLlmErrorCode(null)
     try {
       const r = await fetch(`/api/trading-agents/${encodeURIComponent(ticker)}`)
-      const j = await r.json()
+      let j: Record<string, unknown> = {}
+      try {
+        j = await r.json()
+      } catch {
+        setLlmErrorCode('parse_error')
+        setLlmError('Invalid response when loading cached analysis.')
+        return
+      }
       if (r.ok) {
         setLlmResult(j)
         setLlmHasRun(true)
+        return
       }
-    } catch {} finally {
+      if (r.status === 404) return
+      const code = typeof j.error === 'string' ? j.error : 'unknown'
+      const msg =
+        (typeof j.message === 'string' && j.message) ||
+        (typeof j.details === 'string' && j.details) ||
+        r.statusText
+      setLlmErrorCode(code)
+      setLlmError(msg)
+    } catch (e) {
+      setLlmErrorCode('network_error')
+      setLlmError(e instanceof Error ? e.message : 'Load failed')
+    } finally {
       setLlmLoading(false)
     }
   }, [ticker])
@@ -930,7 +1003,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                     </a>{' '}
                     — 7 specialized agents (market, sentiment, news, fundamentals, bull/bear researchers, risk management, portfolio manager) debate
                     and produce a BUY / OVERWEIGHT / HOLD / UNDERWEIGHT / SELL rating.
-                    Requires an LLM API key in the Python server environment.
+                    Paste your API key below; it is sent to your TradingAgents backend for this run only, then to the LLM provider.
                   </p>
                 </div>
               </div>
@@ -1084,27 +1157,59 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
             {/* Error */}
             {llmError && (
               <div className="rounded-xl border border-red-500/30 bg-red-950/20 p-4 text-xs text-red-200/90">
-                <strong className="text-red-300">Error:</strong> {llmError}
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <strong className="text-red-300">Error</strong>
+                  {llmErrorCode && (
+                    <span className="rounded bg-red-950/80 px-1.5 py-0.5 font-mono text-[10px] text-red-300/90">
+                      {llmErrorCode}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-1 text-red-200/95 whitespace-pre-wrap">{llmError}</p>
 
-                {llmError.includes('backend_not_configured') ? (
+                {llmErrorCode === 'missing_api_key' ? (
+                  <p className="text-red-300/60 mt-2">
+                    This is not a connectivity issue — add your key above to run the analysis.
+                  </p>
+                ) : isLlmConnectivityCode(llmErrorCode) ? (
                   <div className="mt-2 space-y-1">
+                    <p className="text-amber-200/90 font-semibold">Connectivity / deployment</p>
                     <p className="text-red-300/80">
-                      The LLM analysis server is not deployed. To use this feature:
+                      The Next.js app could not reach your TradingAgents Python server (wrong URL, server down, or env not set on Vercel).
                     </p>
                     <ol className="text-red-300/60 list-decimal pl-4 space-y-0.5">
-                      <li>Deploy <code className="font-mono text-red-200">server_trading_agents.py</code> to Railway (railway.app) or Render</li>
-                      <li>Set the Railway URL as <code className="font-mono text-red-200">TRADING_AGENTS_BASE</code> in Vercel project settings</li>
-                      <li>Restart the deployment — the error will clear automatically</li>
+                      <li>
+                        Deploy <code className="font-mono text-red-200">server_trading_agents.py</code> to{' '}
+                        <a href="https://railway.app" target="_blank" rel="noopener noreferrer" className="underline">
+                          Railway
+                        </a>{' '}
+                        or Render (use <code className="font-mono text-red-200">Procfile</code> or start command with <code className="font-mono text-red-200">--host 0.0.0.0</code> and <code className="font-mono text-red-200">$PORT</code>).
+                      </li>
+                      <li>
+                        In Vercel → Project → Environment Variables, set{' '}
+                        <code className="font-mono text-red-200">TRADING_AGENTS_BASE</code> to your public URL (no trailing slash), then redeploy.
+                      </li>
+                      <li>Local dev: run <code className="font-mono text-red-200">python server_trading_agents.py</code> on port 3001 — no env var needed in <code className="font-mono text-red-200">npm run dev</code>.</li>
                     </ol>
-                    <p className="text-red-300/60 mt-1">
-                      This keeps your API key entirely in your browser — QUANTAN never sees or stores it.
+                  </div>
+                ) : isLlmProviderAuthFailure(llmErrorCode, llmError) ? (
+                  <div className="mt-2 space-y-1">
+                    <p className="text-violet-200/90 font-semibold">LLM provider / API key</p>
+                    <p className="text-red-300/80">
+                      The TradingAgents backend reached the LLM provider, but authentication failed or the key was rejected. Check the key, billing, and model access — this is not a Vercel–Railway connectivity issue.
+                    </p>
+                    <p className="text-red-300/60">
+                      Provider:{' '}
+                      {llmProvider === 'openai'
+                        ? 'OpenAI'
+                        : llmProvider === 'anthropic'
+                          ? 'Anthropic'
+                          : llmProvider === 'google'
+                            ? 'Google AI'
+                            : PROVIDER_LABELS[llmProvider]}{' '}
+                      — QUANTAN does not store your key.
                     </p>
                   </div>
-                ) : llmError.includes('secret is too short') || llmError.includes('OPENAI_API_KEY') || llmError.includes('api_key') || llmError.includes('Not set') ? (
-                  <p className="text-red-300/60 mt-2">
-                    The Python server could not authenticate with the LLM provider. Make sure your API key is valid and has credits/quotas available.
-                    The key is sent directly to {llmProvider === 'openai' ? 'OpenAI' : llmProvider === 'anthropic' ? 'Anthropic' : 'your chosen provider'} — QUANTAN never sees or stores it.
-                  </p>
                 ) : null}
               </div>
             )}

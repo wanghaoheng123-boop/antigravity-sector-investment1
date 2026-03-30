@@ -4,8 +4,8 @@ Runs alongside Next.js (default: port 3001).
 
 Start:
     python server_trading_agents.py
-    # or with custom port:
-    python server_trading_agents.py --port 3001
+    # or with custom host/port (Railway/Render set PORT automatically):
+    python server_trading_agents.py --host 0.0.0.0 --port 3001
 
 Endpoints:
     GET  /health                          → { "status": "ok" }
@@ -379,7 +379,13 @@ async def latest_analysis(ticker: str):
 def main():
     parser = argparse.ArgumentParser(description="TradingAgents FastAPI server")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind (0.0.0.0 for external access on Railway/Render)")
-    parser.add_argument("--port", type=int, default=3001, help="Port to bind")
+    default_port = int(os.environ.get("PORT") or "3001")
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=default_port,
+        help="Port to bind (defaults to $PORT on Railway/Render, else 3001)",
+    )
     args = parser.parse_args()
 
     import uvicorn

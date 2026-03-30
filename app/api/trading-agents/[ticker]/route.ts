@@ -1,11 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { SUPPORTED_PROVIDERS, DEFAULT_MODELS, type LLMProvider } from '@/lib/trading-agents-config'
 
-// TradingAgents backend URL — set TRADING_AGENTS_BASE env var to your deployed Railway/Render URL.
-// In production (Vercel) we no longer fall back to 127.0.0.1 (which was unreachable).
-const TA_BASE = process.env.TRADING_AGENTS_BASE
-
 const TIMEOUT_MS = 5 * 60 * 1000 // 5 minutes — TradingAgents can be slow
+
+const DEPLOY_HINT =
+  'Deploy server_trading_agents.py to Railway or Render, set TRADING_AGENTS_BASE in Vercel ' +
+  'Environment Variables to the public URL (no trailing slash). See README: LLM Multi-Agent Analysis (TradingAgents).'
+
+/** Prefer TRADING_AGENTS_BASE; in local dev only, fall back to localhost Python server. */
+function resolveTradingAgentsBase(): string | null {
+  const raw = process.env.TRADING_AGENTS_BASE?.trim()
+  if (raw) return raw.replace(/\/$/, '')
+  if (process.env.NODE_ENV === 'development') return 'http://127.0.0.1:3001'
+  return null
+}
+
+function backendNotConfiguredResponse(details: string) {
+  return NextResponse.json(
+    {
+      error: 'backend_not_configured',
+      message: `TradingAgents backend is not reachable from this deployment. ${DEPLOY_HINT}`,
+      details,
+    },
+    { status: 502 }
+  )
+}
 
 export const runtime = 'nodejs'
 
@@ -16,6 +35,11 @@ export async function GET(
   const ticker = params.ticker?.trim().toUpperCase()
   if (!ticker) {
     return NextResponse.json({ error: 'ticker is required' }, { status: 400 })
+  }
+
+  const TA_BASE = resolveTradingAgentsBase()
+  if (!TA_BASE) {
+    return backendNotConfiguredResponse('TRADING_AGENTS_BASE is not set')
   }
 
   try {
@@ -66,19 +90,14 @@ export async function GET(
       msg.includes('ENOTFOUND') ||
       msg.includes('fetch failed') ||
       msg.includes('NetworkError') ||
-      msg.includes('TypeError') ||
-      !TA_BASE
+      msg.includes('TypeError')
 
     if (isConnectivityError) {
       return NextResponse.json(
         {
-          error: 'backend_not_configured',
-          message:
-            'TradingAgents backend is not configured. ' +
-            'Deploy server_trading_agents.py to Railway or Render, then set ' +
-            'TRADING_AGENTS_BASE in Vercel Environment Variables. ' +
-            'See: https://github.com/your-repo#llm-multi-agent-setup',
-          details: TA_BASE ? msg : 'TRADING_AGENTS_BASE is not set',
+          error: 'backend_unreachable',
+          message: `Cannot reach TradingAgents at ${TA_BASE}. ${DEPLOY_HINT}`,
+          details: msg,
         },
         { status: 502 }
       )
@@ -138,6 +157,11 @@ export async function POST(
       { error: 'invalid_api_key', message: 'api_key must be a valid non-empty string' },
       { status: 400 }
     )
+  }
+
+  const TA_BASE = resolveTradingAgentsBase()
+  if (!TA_BASE) {
+    return backendNotConfiguredResponse('TRADING_AGENTS_BASE is not set')
   }
 
   // Sanitize: strip any top-level fields that shouldn't be forwarded
@@ -210,16 +234,19 @@ export async function POST(
     clearTimeout(timer)
 
     if (!upstream.ok) {
-      let errorData: { error?: string; details?: string } = {}
+      let errorData: { error?: string; details?: string; message?: string } = {}
       try {
         errorData = await upstream.json()
       } catch {
         // ignore parse error
       }
+      const detailText =
+        errorData.details || errorData.message || errorData.error || upstream.statusText
       return NextResponse.json(
         {
           error: 'upstream_error',
-          details: errorData.details || errorData.error || upstream.statusText,
+          message: detailText,
+          details: detailText,
         },
         { status: 502 }
       )
@@ -242,19 +269,14 @@ export async function POST(
       msg.includes('ENOTFOUND') ||
       msg.includes('fetch failed') ||
       msg.includes('NetworkError') ||
-      msg.includes('TypeError') ||
-      !TA_BASE
+      msg.includes('TypeError')
 
     if (isConnectivityError) {
       return NextResponse.json(
         {
-          error: 'backend_not_configured',
-          message:
-            'TradingAgents backend is not configured. ' +
-            'Deploy server_trading_agents.py to Railway or Render, then set ' +
-            'TRADING_AGENTS_BASE in Vercel Environment Variables. ' +
-            'See: https://github.com/your-repo#llm-multi-agent-setup',
-          details: TA_BASE ? msg : 'TRADING_AGENTS_BASE is not set',
+          error: 'backend_unreachable',
+          message: `Cannot reach TradingAgents at ${TA_BASE}. ${DEPLOY_HINT}`,
+          details: msg,
         },
         { status: 502 }
       )

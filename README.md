@@ -71,10 +71,11 @@ The **LLM Multi-Agent Analysis** feature in the Quant Lab requires the `server_t
 
 1. Create a free account at [railway.app](https://railway.app) (500 hrs/month free, $5 sign-up credit).
 2. Click **New Project → Deploy from GitHub** → select the `QUANTAN-sector-investment` repo.
-3. Set the **start command** to:
+3. Railway injects **`PORT`**; the repo includes a **`Procfile`** that runs:
    ```
-   python server_trading_agents.py --host 0.0.0.0 --port 3001
+   python server_trading_agents.py --host 0.0.0.0 --port $PORT
    ```
+   If you deploy without the Procfile, set the start command to the same line (Railway sets `$PORT` automatically).
 4. Railway will auto-detect Python and install dependencies from `requirements.txt` if present. Create a `requirements.txt` in the repo root:
    ```
    fastapi>=0.115.0
