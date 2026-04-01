@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { BtcCandle, calcRSI, calcMACD, calcEMA, calcBollingerBands, calcVWAP, interpretFundingRate, RAINBOW_BANDS, getRainbowBand } from '@/lib/crypto'
+import { ma200Regime, sma200DeviationPct } from '@/lib/quant/technicals'
 import { apiUrl } from '@/lib/apiBase'
 
 interface Props { candles: BtcCandle[] }
@@ -126,6 +127,16 @@ export default function BtcQuantLab({ candles }: Props) {
   const rainbowLow = low20 * 0.6
   const rainbowBand = getRainbowBand(latestClose, rainbowHigh, rainbowLow)
 
+  // 200-day MA deviation regime — buy-the-dip / falling-knife classifier
+  const regime = ma200Regime(latestClose, closes, latestRSI)
+  const devPct = sma200DeviationPct(latestClose, closes.length >= 200
+    ? closes.slice(-200).reduce((a, b) => a + b, 0) / 200
+    : 0)
+  const ma200 =
+    closes.length >= 200
+      ? closes.slice(-200).reduce((a, b) => a + b, 0) / 200
+      : null
+
   // Signal summary
   const signals = [
     {
@@ -187,6 +198,12 @@ export default function BtcQuantLab({ candles }: Props) {
       value: rainbowBand.label,
       signal: 'STRATEGY',
       color: 'text-amber-400',
+    },
+    {
+      label: '200MA Deviation',
+      value: regime.deviationPct != null ? `${regime.deviationPct > 0 ? '+' : ''}${regime.deviationPct.toFixed(1)}%` : '—',
+      signal: regime.dipSignal === 'STRONG_DIP' ? 'BUY THE DIP' : regime.dipSignal === 'FALLING_KNIFE' ? 'FALLING KNIFE' : regime.dipSignal === 'WATCH_DIP' ? 'WATCH — NO ADD' : regime.dipSignal === 'OVERBOUGHT' ? 'OVERBOUGHT' : regime.dipSignal === 'IN_TREND' ? 'IN TREND' : regime.label,
+      color: regime.dipSignal === 'STRONG_DIP' ? 'text-green-400' : regime.dipSignal === 'FALLING_KNIFE' ? 'text-red-400' : regime.dipSignal === 'WATCH_DIP' ? 'text-amber-400' : regime.dipSignal === 'OVERBOUGHT' ? 'text-orange-400' : 'text-slate-400',
     },
   ]
 
@@ -325,6 +342,44 @@ export default function BtcQuantLab({ candles }: Props) {
                 <div className="text-[10px] text-slate-600 mt-1">Upper: ${latestBB.upper?.toLocaleString('en-US', { maximumFractionDigits: 0 })} · Lower: ${latestBB.lower?.toLocaleString('en-US', { maximumFractionDigits: 0 })}</div>
               </div>
             </div>
+
+            {/* 200-day MA Deviation — buy-the-dip / falling-knife regime */}
+            {ma200 != null && Number.isFinite(latestClose) && (
+              <div className="rounded-xl border p-4 mt-2" style={{ borderColor: regime.color + '55', backgroundColor: regime.color + '0d' }}>
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div>
+                    <div className="text-[10px] uppercase tracking-widest mb-1" style={{ color: regime.color }}>200-Day MA Regime</div>
+                    <div className="text-xl font-bold" style={{ color: regime.color }}>{regime.label}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      {ma200 != null ? `200DMA: $${ma200.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : ''}
+                      {regime.deviationPct != null ? ` · Deviation: ${regime.deviationPct > 0 ? '+' : ''}${regime.deviationPct.toFixed(1)}%` : ''}
+                      {regime.slopePositive !== null && (
+                        <span className="ml-2">{regime.slopePositive ? '↗ 200DMA rising' : '↘ 200DMA falling'}</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className={`text-sm font-bold px-3 py-1 rounded-full border ${regime.dipSignal === 'STRONG_DIP' ? 'bg-green-950/60 border-green-500/50 text-green-300' : regime.dipSignal === 'FALLING_KNIFE' ? 'bg-red-950/60 border-red-500/50 text-red-300' : 'bg-slate-900/60 border-slate-700 text-slate-300'}`}>
+                    {regime.dipSignal === 'STRONG_DIP' ? '✓ BUY THE DIP' : regime.dipSignal === 'FALLING_KNIFE' ? '✗ FALLING KNIFE' : regime.dipSignal === 'WATCH_DIP' ? '⚠ WATCH — NO ADD' : regime.dipSignal === 'OVERBOUGHT' ? '⚠ OVERBOUGHT' : regime.dipSignal === 'IN_TREND' ? '→ IN TREND' : regime.dipSignal}
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-2 leading-relaxed">{regime.dipSignalExplained}</p>
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 gap-2 text-[10px] text-slate-500">
+                  <div>
+                    <span className="uppercase tracking-wide">Risk: </span>
+                    <span className={regime.riskLevel === 'low' ? 'text-green-400' : regime.riskLevel === 'medium' ? 'text-amber-400' : 'text-red-400'}>{regime.riskLevel}</span>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <span className="uppercase tracking-wide">Forward context: </span>
+                    <span className="text-slate-400">{regime.forwardReturnContext}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+            {ma200 == null && (
+              <div className="rounded-xl border border-slate-800 p-4 mt-2 bg-slate-900/40">
+                <div className="text-sm text-slate-500">200-day MA Regime requires at least 200 daily candles to compute — not enough history loaded yet.</div>
+              </div>
+            )}
           </div>
         )}
       </Section>
