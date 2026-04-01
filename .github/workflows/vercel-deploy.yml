@@ -31,44 +31,8 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@50.37.3
 
-      # Create .vercel/project directory so `vercel pull` knows which project to target
-      # Project ID: prj_4jtysyjAQoA8OcogAApKqbnPxClp (from Vercel project settings)
-      - name: Configure Vercel project context
-        run: |
-          mkdir -p .vercel/project
-          echo '{"projectId":"prj_4jtysyjAQoA8OcogAApKqbnPxClp","orgId":"team_placeholder"}' > .vercel/project.json
-          echo "Created .vercel/project.json:"
-          cat .vercel/project.json
-
-      - name: Pull Vercel Environment Information
-        if: ${{ github.event.inputs.skip_pull != 'true' }}
-        run: |
-          set -o pipefail
-          echo "============================================"
-          echo "STEP: Pull Vercel Environment Information"
-          echo "Token set: [${{ secrets.VERCEL_TOKEN }}]"
-          echo "============================================"
-          echo "Running: vercel pull --yes --environment=production"
-          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
-          PULL_EXIT=$?
-          echo ""
-          echo "vercel pull exit code: $PULL_EXIT"
-          if [ $PULL_EXIT -ne 0 ]; then
-            echo ""
-            echo "============================================"
-            echo "ERROR: vercel pull failed (exit code $PULL_EXIT)"
-            echo "============================================"
-            echo "Likely causes:"
-            echo "  1. VERCEL_TOKEN is invalid or expired"
-            echo "     → Fix: https://vercel.com/settings/tokens → create new token"
-            echo "        Then add to: GitHub → Settings → Secrets → Actions → VERCEL_TOKEN"
-            echo "  2. Project ID is wrong (but .vercel/project.json was created)"
-            echo "  3. Network/rate-limit issue with Vercel"
-            echo "============================================"
-            exit $PULL_EXIT
-          fi
-          echo "vercel pull completed successfully"
-
+      # Skip vercel pull — project context is provided by vercel.json committed to repo
+      # vercel build reads projectId/orgId from vercel.json automatically
       - name: Build Project Artifacts
         run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
 
