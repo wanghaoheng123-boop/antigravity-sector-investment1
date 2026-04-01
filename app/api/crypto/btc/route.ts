@@ -20,28 +20,35 @@ function sleep(ms: number) {
   return new Promise<void>((r) => setTimeout(r, ms))
 }
 
-async function fetchKlines(url: string, maxAttempts = 3): Promise<Response> {
+async function fetchWithTimeout(url: string, timeoutMs = 15_000, attempts = 3): Promise<Response> {
   let last: Response | null = null
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    const res = await fetch(url, {
-      headers: { 'Accept': 'application/json', 'User-Agent': 'QUANTAN/1.0' },
-      next: { revalidate: 0 },
-      signal: AbortSignal.timeout(15_000),
-    } as RequestInit)
-    last = res
-    if (res.ok) return res
-    if ((res.status === 429 || res.status === 418) && attempt < maxAttempts - 1) {
-      const ra = res.headers.get('retry-after')
-      const sec = ra ? Math.min(parseInt(ra, 10) || 0, 30) : 0
-      await sleep(sec > 0 ? sec * 1000 : 500 * Math.pow(2, attempt))
-      continue
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { 'Accept': 'application/json', 'User-Agent': 'QUANTAN/1.0' },
+        signal: AbortSignal.timeout(timeoutMs),
+      } as RequestInit)
+      last = res
+      if (res.ok) return res
+      if ((res.status === 429 || res.status === 418) && attempt < attempts - 1) {
+        const ra = res.headers.get('retry-after')
+        const sec = ra ? Math.min(parseInt(ra, 10) || 0, 30) : 0
+        await sleep(sec > 0 ? sec * 1000 : 500 * Math.pow(2, attempt))
+        continue
+      }
+      if (attempt < attempts - 1 && res.status >= 500) {
+        await sleep(400 * (attempt + 1))
+        continue
+      }
+      return res
+    } catch {
+      if (attempt < attempts - 1) {
+        await sleep(300 * (attempt + 1))
+        continue
+      }
     }
-    if (attempt < maxAttempts - 1 && res.status >= 500) {
-      await sleep(400 * (attempt + 1))
-      continue
-    }
-    return res
   }
+  if (!last) throw new Error('All fetch attempts failed')
   return last!
 }
 
@@ -54,17 +61,101 @@ type CandleRow = {
   volume: number
 }
 
+function isGeoRestricted(text: string, status: number): boolean {
+  return (
+    status === 451 ||
+    text.toLowerCase().includes('restricted location') ||
+    text.toLowerCase().includes('eligibility') ||
+    text.toLowerCase().includes('service unavailable from a restricted')
+  )
+}
+
 /**
- * When Binance REST is geo-blocked or errors, Kraken public OHLC often still works from the same host.
+ * CoinGecko primary OHLC — globally accessible, no geo-blocking.
+ * OHLC format: [timestamp_ms, open, high, low, close]
+ * Volume is synthetic (1) — VWAP/OBV will be approximate.
+ */
+async function fetchCoinGeckoOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
+  const days: Record<string, number | 'max'> = {
+    '5m': 1, '15m': 1, '1h': 7, '4h': 30,
+    '1d': 365, '1w': 'max', '1M': 'max',
+  }
+  const d = days[binanceInterval] ?? 365
+  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=${d === 'max' ? 'max' : d}`
+
+  const attempt = async (): Promise<CandleRow[] | null> => {
+    try {
+      const res = await fetchWithTimeout(url, 20_000, 2)
+      if (res.status === 429) return null
+      if (!res.ok) return null
+      const rows = (await res.json()) as unknown
+      if (!Array.isArray(rows) || rows.length === 0) return null
+      const slice = rows.slice(-Math.min(limit, rows.length))
+      const candles = slice
+        .map((row: unknown) => {
+          if (!Array.isArray(row) || row.length < 5) return null
+          const tMs = Number(row[0])
+          const open = parseFloat(String(row[1]))
+          const high = parseFloat(String(row[2]))
+          const low = parseFloat(String(row[3]))
+          const close = parseFloat(String(row[4]))
+          if (![open, high, low, close].every(Number.isFinite)) return null
+          return { time: Math.floor(tMs / 1000), open, high, low, close, volume: 1 }
+        })
+        .filter((c): c is CandleRow => c !== null)
+        .filter(c => c.high >= c.low && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close))
+      return candles.length ? candles : null
+    } catch { return null }
+  }
+
+  try {
+    let out = await attempt()
+    if (out) return out
+    await sleep(1500)
+    out = await attempt()
+    return out
+  } catch { return null }
+}
+
+/**
+ * Binance REST — geo-blocked from Vercel IPs in many regions.
+ * Used as secondary fallback only when CoinGecko fails.
+ */
+async function fetchBinanceOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
+  const url = `${BINANCE_BASE}/api/v3/klines?symbol=${SYMBOL}&interval=${binanceInterval}&limit=${limit}`
+  try {
+    const res = await fetchWithTimeout(url, 15_000, 2)
+    const text = await res.text()
+    if (!res.ok || isGeoRestricted(text, res.status)) return null
+    const data: unknown[] = JSON.parse(text) as unknown[]
+    if (!Array.isArray(data) || data.length === 0) return null
+    const candles = data
+      .filter((k: unknown): k is unknown[] => Array.isArray(k) && k.length >= 6 && k[4] != null)
+      .map((k: unknown[]) => ({
+        time: Math.floor(Number(k[0]) / 1000),
+        open: parseFloat(String(k[1])),
+        high: parseFloat(String(k[2])),
+        low: parseFloat(String(k[3])),
+        close: parseFloat(String(k[4])),
+        volume: parseFloat(String(k[5])),
+      }))
+      .filter((c) =>
+        [c.open, c.high, c.low, c.close, c.volume].every((v) => Number.isFinite(v) && v >= 0) &&
+        c.high >= c.low && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close)
+      )
+    return candles.length ? candles : null
+  } catch { return null }
+}
+
+/**
+ * Kraken OHLC — XBTUSD pair, often accessible even when Binance is blocked.
+ * Used as tertiary fallback.
  */
 async function fetchKrakenOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
   const minutes = KRAKEN_INTERVAL_MINUTES[binanceInterval] ?? 1440
   const url = `${KRAKEN_OHLC}?pair=XBTUSD&interval=${minutes}`
   try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': 'QUANTAN/1.0' },
-      signal: AbortSignal.timeout(20_000),
-    } as RequestInit)
+    const res = await fetchWithTimeout(url, 20_000, 2)
     if (!res.ok) return null
     const data = (await res.json()) as { error?: string[]; result?: Record<string, unknown> }
     if (data.error?.length) return null
@@ -87,112 +178,14 @@ async function fetchKrakenOhlc(binanceInterval: string, limit: number): Promise<
         return { time: t, open, high, low, close, volume }
       })
       .filter((c): c is CandleRow => c !== null)
-      .filter((c) =>
-        [c.open, c.high, c.low, c.close, c.volume].every((v) => Number.isFinite(v) && v >= 0) &&
-        c.high >= c.low &&
-        c.high >= Math.max(c.open, c.close) &&
-        c.low <= Math.min(c.open, c.close)
-      )
+      .filter(c => c.high >= c.low && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close))
     return candles.length ? candles : null
-  } catch (e) {
-    console.error('[BTC API] Kraken fallback failed:', e)
-    return null
-  }
+  } catch { return null }
 }
 
-/** CoinGecko `days` → OHLC granularity varies; we slice to `limit` most recent bars. */
-function coingeckoDaysParam(binanceInterval: string): number | 'max' {
-  switch (binanceInterval) {
-    case '5m':
-    case '15m':
-      return 1
-    case '1h':
-      return 7
-    case '4h':
-      return 30
-    case '1d':
-      return 365
-    case '1w':
-    case '1M':
-      return 'max'
-    default:
-      return 365
-  }
-}
-
-/**
- * Third REST fallback — wide geographic availability; rate-limited (retry once on 429).
- * OHLC has no volume — use synthetic volume so VWAP / histogram stay finite.
- */
-async function fetchCoinGeckoOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
-  const days = coingeckoDaysParam(binanceInterval)
-  const daysStr = days === 'max' ? 'max' : String(days)
-  const url = `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=usd&days=${daysStr}`
-
-  const attempt = async (): Promise<CandleRow[] | null> => {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/json', 'User-Agent': 'QUANTAN/1.0' },
-      signal: AbortSignal.timeout(25_000),
-    } as RequestInit)
-    if (res.status === 429) return null
-    if (!res.ok) return null
-    const rows = (await res.json()) as unknown
-    if (!Array.isArray(rows) || rows.length === 0) return null
-    const slice = rows.slice(-Math.min(limit, rows.length))
-    const candles = slice
-      .map((row: unknown) => {
-        if (!Array.isArray(row) || row.length < 5) return null
-        const tMs = Number(row[0])
-        const open = parseFloat(String(row[1]))
-        const high = parseFloat(String(row[2]))
-        const low = parseFloat(String(row[3]))
-        const close = parseFloat(String(row[4]))
-        return {
-          time: Math.floor(tMs / 1000),
-          open,
-          high,
-          low,
-          close,
-          volume: 1,
-        }
-      })
-      .filter((c): c is CandleRow => c !== null)
-      .filter((c) =>
-        [c.open, c.high, c.low, c.close, c.volume].every((v) => Number.isFinite(v) && v >= 0) &&
-        c.high >= c.low &&
-        c.high >= Math.max(c.open, c.close) &&
-        c.low <= Math.min(c.open, c.close)
-      )
-    return candles.length ? candles : null
-  }
-
-  try {
-    let out = await attempt()
-    if (out) return out
-    await sleep(2000)
-    out = await attempt()
-    return out
-  } catch (e) {
-    console.error('[BTC API] CoinGecko fallback failed:', e)
-    return null
-  }
-}
-
-async function fetchFallbackCandles(binanceInterval: string, limit: number): Promise<{
-  candles: CandleRow[]
-  source: 'kraken' | 'coingecko'
-} | null> {
-  const kr = await fetchKrakenOhlc(binanceInterval, limit)
-  if (kr?.length) return { candles: kr, source: 'kraken' }
-  const cg = await fetchCoinGeckoOhlc(binanceInterval, limit)
-  if (cg?.length) return { candles: cg, source: 'coingecko' }
-  return null
-}
-
-// Supported intervals (compatible with lightweight-charts Time)
 const INTERVAL_MAP: Record<string, string> = {
-  '5m':  '5m', '15m': '15m', '1h': '1h',  '4h': '4h',
-  '1d':  '1d', '1w':  '1w',  '1M':  '1M',
+  '5m': '5m', '15m': '15m', '1h': '1h', '4h': '4h',
+  '1d': '1d', '1w': '1w', '1M': '1M',
 }
 
 export const dynamic = 'force-dynamic'
@@ -202,130 +195,59 @@ export async function GET(req: NextRequest) {
   const interval = searchParams.get('interval') || '1d'
   const rawLimit = parseInt(searchParams.get('limit') || '500', 10)
   const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 1000) : 500
-
   const binanceInterval = INTERVAL_MAP[interval] || '1d'
 
-  try {
-    const url = `${BINANCE_BASE}/api/v3/klines?symbol=${SYMBOL}&interval=${binanceInterval}&limit=${limit}`
-    const res = await fetchKlines(url)
-
-    if (!res.ok) {
-      const text = await res.text()
-      console.error(`[BTC API] Binance error ${res.status}: ${text}`)
-      let parsed: { code?: number; msg?: string } | null = null
-      try {
-        parsed = JSON.parse(text) as { code?: number; msg?: string }
-      } catch {
-        /* plain text */
-      }
-      const msg = (parsed?.msg ?? '').toLowerCase()
-      const geoRestricted =
-        res.status === 451 ||
-        msg.includes('restricted location') ||
-        msg.includes('eligibility') ||
-        msg.includes('service unavailable from a restricted')
-
-      const fb = await fetchFallbackCandles(binanceInterval, limit)
-      if (fb) {
-        const note =
-          fb.source === 'kraken'
-            ? 'Binance REST was unavailable; served comparable OHLC from Kraken. Live price WebSocket may still use Binance and can fail separately in restricted regions.'
-            : 'Binance and Kraken REST were unavailable; served OHLC from CoinGecko (volume is synthetic). Live WebSocket may still fail.'
-        return NextResponse.json(
-          {
-            symbol: SYMBOL,
-            interval: binanceInterval,
-            candles: fb.candles,
-            source:
-              fb.source === 'kraken'
-                ? 'Kraken Public API (fallback)'
-                : 'CoinGecko Public API (fallback)',
-            note,
-            fallbackFrom: geoRestricted ? ('binance_geo_restricted' as const) : ('binance_http_error' as const),
-          },
-          { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
-        )
-      }
-
-      if (geoRestricted) {
-        return NextResponse.json(
-          {
-            error: 'binance_geo_restricted',
-            userMessage:
-              'Binance API is not available from this server region (or your network), and the Kraken fallback could not load candles. Options: deploy in a Binance-allowed region, use a VPN where legal, or try again later.',
-            details: text,
-          },
-          { status: 451 }
-        )
-      }
-
-      return NextResponse.json(
-        {
-          error: 'binance_api_error',
-          userMessage: parsed?.msg ?? 'Binance returned an error for this request.',
-          details: text,
-        },
-        { status: 502 }
-      )
-    }
-
-    const data: unknown[] = (await res.json()) as unknown[]
-
-    // Binance kline format: [openTime, open, high, low, close, volume, closeTime, ...]
-    const candles = data
-      .filter((k: unknown): k is unknown[] => Array.isArray(k) && k.length >= 6 && k[4] != null)
-      .map((k: unknown[]) => ({
-        time: Math.floor(Number(k[0]) / 1000), // Unix seconds for lightweight-charts
-        open:   parseFloat(String(k[1])),
-        high:   parseFloat(String(k[2])),
-        low:    parseFloat(String(k[3])),
-        close:  parseFloat(String(k[4])),
-        volume: parseFloat(String(k[5])),
-      }))
-      .filter((c) =>
-        [c.open, c.high, c.low, c.close, c.volume].every((v) => Number.isFinite(v) && v >= 0) &&
-        c.high >= c.low &&
-        c.high >= Math.max(c.open, c.close) &&
-        c.low <= Math.min(c.open, c.close)
-      )
-
+  // ── Primary: CoinGecko (globally accessible) ──────────────────────────────
+  const cg = await fetchCoinGeckoOhlc(binanceInterval, limit)
+  if (cg?.length) {
     return NextResponse.json(
-      { symbol: SYMBOL, interval: binanceInterval, candles, source: 'Binance Public API' },
+      {
+        symbol: SYMBOL,
+        interval: binanceInterval,
+        candles: cg,
+        source: 'CoinGecko Public API (primary)',
+      },
       { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
     )
-  } catch (error) {
-    console.error('[BTC API] Error fetching BTC data from Binance:', error)
-    try {
-      const interval = new URL(req.url).searchParams.get('interval') || '1d'
-      const rawLimit = parseInt(new URL(req.url).searchParams.get('limit') || '500', 10)
-      const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 1000) : 500
-      const binanceInterval = INTERVAL_MAP[interval] || '1d'
-      const fb = await fetchFallbackCandles(binanceInterval, limit)
-      if (fb) {
-        return NextResponse.json(
-          {
-            symbol: SYMBOL,
-            interval: binanceInterval,
-            candles: fb.candles,
-            source:
-              fb.source === 'kraken'
-                ? 'Kraken Public API (fallback)'
-                : 'CoinGecko Public API (fallback)',
-            note:
-              fb.source === 'kraken'
-                ? 'Binance request failed; served OHLC from Kraken instead.'
-                : 'Binance/Kraken failed; served OHLC from CoinGecko (synthetic volume).',
-            fallbackFrom: 'network_error' as const,
-          },
-          { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
-        )
-      }
-    } catch {
-      /* fall through */
-    }
+  }
+
+  // ── Secondary: Binance (geo-blocked from Vercel IPs in many regions) ───────
+  const bn = await fetchBinanceOhlc(binanceInterval, limit)
+  if (bn?.length) {
     return NextResponse.json(
-      { error: 'Failed to fetch BTC data', details: String(error) },
-      { status: 500 }
+      {
+        symbol: SYMBOL,
+        interval: binanceInterval,
+        candles: bn,
+        source: 'Binance Public API',
+        note: 'CoinGecko was unavailable; served from Binance.',
+      },
+      { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
     )
   }
+
+  // ── Tertiary: Kraken ───────────────────────────────────────────────────────
+  const kr = await fetchKrakenOhlc(binanceInterval, limit)
+  if (kr?.length) {
+    return NextResponse.json(
+      {
+        symbol: SYMBOL,
+        interval: binanceInterval,
+        candles: kr,
+        source: 'Kraken Public API (fallback)',
+        note: 'CoinGecko and Binance were unavailable; served from Kraken (volume may be in XBT not USD).',
+      },
+      { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
+    )
+  }
+
+  // ── All sources failed ─────────────────────────────────────────────────────
+  return NextResponse.json(
+    {
+      error: 'btc_data_unavailable',
+      userMessage:
+        'All BTC data sources (CoinGecko, Binance, Kraken) are currently unreachable or rate-limited from this server region. The chart and price may still work from your browser via the client-side CoinGecko fallback.',
+    },
+    { status: 503 }
+  )
 }

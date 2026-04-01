@@ -526,7 +526,7 @@ export default function BtcPage() {
                 </div>
                 <h1 className="text-2xl font-bold text-white tracking-wide">Bitcoin (BTC)</h1>
                 <p className="text-sm text-slate-400 mt-0.5">
-                  BTC/USDT · REST: Binance → Kraken → CoinGecko · Live: Binance WebSocket (or REST quote if blocked)
+                  BTC/USDT · Primary: CoinGecko · Fallbacks: Binance, Kraken · Live: Binance WebSocket
                 </p>
               </div>
             </div>
@@ -688,8 +688,7 @@ export default function BtcPage() {
 
         <div className="text-center text-[10px] text-slate-700 max-w-3xl mx-auto space-y-1">
           <p>
-            Data sourced from Binance Public API via WebSocket (real-time) and REST (historical). If you see a geo-restriction
-            message, Binance is blocking your server or network region — not a bug in this app.
+            Data sourced from CoinGecko (primary, no geo-blocking), Binance REST, Kraken, and Binance WebSocket. Geo-restriction messages mean the server region is blocked — not a bug.
           </p>
           <p>Prices are indicative.</p>
         </div>
