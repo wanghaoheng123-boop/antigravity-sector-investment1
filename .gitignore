@@ -38,8 +38,23 @@ yarn-error.log*
 
 .vercel
 
-# Cloud / Finder duplicate filenames
+# Cloud / Finder duplicate filenames (iCloud/OneDrive sync artifacts — never commit)
+# Matches: "file 2.ext", "file 3.tsx", "route 4", "page 5.tsx", etc.
+* 2
 * 2.*
+* 3
 * 3.*
+* 4
+* 4.*
+* 5
+* 5.*
+* 6
+* 6.*
+* 7
+* 7.*
+* 8
+* 8.*
+* 9
+* 9.*
 
 .vercel

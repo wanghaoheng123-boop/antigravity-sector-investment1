@@ -46,7 +46,7 @@ export async function GET(
       case '5m':   period1.setDate(period1.getDate() - 2); interval = '5m';  break
       case '15m':  period1.setDate(period1.getDate() - 3); interval = '15m'; break
       case '1H':   period1.setDate(period1.getDate() - 5); interval = '1h';  break
-      case '4H':   period1.setDate(period1.getDate() - 10); interval = '1h'; break
+      case '4H':   period1.setDate(period1.getDate() - 15); interval = '1h'; break
       case '1D':   period1.setDate(period1.getDate() - 14); interval = '1d'; break
       case '1W':   period1.setDate(period1.getDate() - 30); interval = '1d'; break
       case '1M':   period1.setMonth(period1.getMonth() - 1); interval = '1d'; break
@@ -77,7 +77,7 @@ export async function GET(
       })
 
     const darkPoolMarkers = generateDarkPoolMarkers(
-      candles.map(c => ({ time: c.time as any, close: c.close })),
+      candles.map((c: { time: string | number; close: number }) => ({ time: c.time as any, close: c.close })),
       ticker
     )
 

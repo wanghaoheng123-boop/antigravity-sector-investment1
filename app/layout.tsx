@@ -55,6 +55,11 @@ export default function RootLayout({
                 <Link href="/commodities" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Commodities</Link>
                 <Link href="/crypto/btc" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Crypto</Link>
                 <Link href="/heatmap" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Heatmap</Link>
+                <Link href="/ma-deviation" className="text-sm font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1">
+                  <span className="hidden sm:inline">200MA</span>
+                  <span className="sm:hidden">MA</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-mono leading-none">NEW</span>
+                </Link>
                 <Link href="/briefs" className="text-sm font-medium text-slate-400 hover:text-white transition-colors">Briefs</Link>
                 <GlobalSearch />
                 <SafeAuth />
