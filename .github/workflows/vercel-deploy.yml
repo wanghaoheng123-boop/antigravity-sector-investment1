@@ -31,14 +31,21 @@ jobs:
       - name: Install Vercel CLI
         run: npm install -g vercel@50.37.3
 
+      # Create .vercel/project directory so `vercel pull` knows which project to target
+      # Project ID: prj_4jtysyjAQoA8OcogAApKqbnPxClp (from Vercel project settings)
+      - name: Configure Vercel project context
+        run: |
+          mkdir -p .vercel/project
+          echo '{"projectId":"prj_4jtysyjAQoA8OcogAApKqbnPxClp","orgId":"team_placeholder"}' > .vercel/project.json
+          cat .vercel/project.json
+
       - name: Pull Vercel Environment Information
         if: ${{ github.event.inputs.skip_pull != 'true' }}
         run: |
           echo "============================================"
           echo "STEP: Pull Vercel Environment Information"
-          echo "============================================"
           echo "Token present: ${{ secrets.VERCEL_TOKEN != '' }}"
-          echo ""
+          echo "============================================"
 
           EXIT_CODE=0
           OUTPUT=$(vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}" 2>&1) || EXIT_CODE=$?
@@ -49,23 +56,16 @@ jobs:
           if [ $EXIT_CODE -ne 0 ]; then
             echo ""
             echo "============================================"
-            echo "ERROR: vercel pull failed with exit code $EXIT_CODE"
+            echo "ERROR: vercel pull failed (exit $EXIT_CODE)"
             echo "============================================"
 
-            # Auth-related error detection
-            if echo "$OUTPUT" | grep -qiE "token|unauthorized|authentication|invalid|403|401|not.*found|no.*credentials|bad.*token|expired"; then
+            if echo "$OUTPUT" | grep -qiE "token|unauthorized|authentication|invalid|403|401|no.*credentials|bad.*token|expired|not.*found"; then
               echo "LIKELY CAUSE: Authentication failure."
-              echo ""
-              echo "FIX: Go to https://vercel.com/settings/tokens"
-              echo "     → Create a new token (must start with 'a8kt_')"
-              echo "     → Add to GitHub: Settings → Secrets → Actions → VERCEL_TOKEN"
+              echo "FIX: https://vercel.com/settings/tokens → create token"
+              echo "     Then add to GitHub: Settings → Secrets → Actions → VERCEL_TOKEN"
             else
               echo "LIKELY CAUSE: Non-auth error. Check output above."
-              echo ""
-              echo "Common causes:"
-              echo "  - Vercel project deleted or renamed"
-              echo "  - Network/rate-limit issue"
-              echo "  - Vercel CLI issue"
+              echo "Common causes: project deleted, network issue, rate-limit."
             fi
             echo "============================================"
             exit $EXIT_CODE
