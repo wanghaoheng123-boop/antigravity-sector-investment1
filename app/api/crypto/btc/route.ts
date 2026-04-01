@@ -276,11 +276,11 @@ export async function GET(req: NextRequest) {
       .filter((k: unknown): k is unknown[] => Array.isArray(k) && k.length >= 6 && k[4] != null)
       .map((k: unknown[]) => ({
         time: Math.floor(Number(k[0]) / 1000), // Unix seconds for lightweight-charts
-        open:   parseFloat(k[1]),
-        high:   parseFloat(k[2]),
-        low:    parseFloat(k[3]),
-        close:  parseFloat(k[4]),
-        volume: parseFloat(k[5]),
+        open:   parseFloat(String(k[1])),
+        high:   parseFloat(String(k[2])),
+        low:    parseFloat(String(k[3])),
+        close:  parseFloat(String(k[4])),
+        volume: parseFloat(String(k[5])),
       }))
       .filter((c) =>
         [c.open, c.high, c.low, c.close, c.volume].every((v) => Number.isFinite(v) && v >= 0) &&
