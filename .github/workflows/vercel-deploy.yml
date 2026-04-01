@@ -37,38 +37,35 @@ jobs:
         run: |
           mkdir -p .vercel/project
           echo '{"projectId":"prj_4jtysyjAQoA8OcogAApKqbnPxClp","orgId":"team_placeholder"}' > .vercel/project.json
+          echo "Created .vercel/project.json:"
           cat .vercel/project.json
 
       - name: Pull Vercel Environment Information
         if: ${{ github.event.inputs.skip_pull != 'true' }}
         run: |
+          set -o pipefail
           echo "============================================"
           echo "STEP: Pull Vercel Environment Information"
-          echo "Token present: ${{ secrets.VERCEL_TOKEN != '' }}"
+          echo "Token set: [${{ secrets.VERCEL_TOKEN }}]"
           echo "============================================"
-
-          EXIT_CODE=0
-          OUTPUT=$(vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}" 2>&1) || EXIT_CODE=$?
-          echo "$OUTPUT"
+          echo "Running: vercel pull --yes --environment=production"
+          vercel pull --yes --environment=production --token="${{ secrets.VERCEL_TOKEN }}"
+          PULL_EXIT=$?
           echo ""
-          echo "vercel pull exit code: $EXIT_CODE"
-
-          if [ $EXIT_CODE -ne 0 ]; then
+          echo "vercel pull exit code: $PULL_EXIT"
+          if [ $PULL_EXIT -ne 0 ]; then
             echo ""
             echo "============================================"
-            echo "ERROR: vercel pull failed (exit $EXIT_CODE)"
+            echo "ERROR: vercel pull failed (exit code $PULL_EXIT)"
             echo "============================================"
-
-            if echo "$OUTPUT" | grep -qiE "token|unauthorized|authentication|invalid|403|401|no.*credentials|bad.*token|expired|not.*found"; then
-              echo "LIKELY CAUSE: Authentication failure."
-              echo "FIX: https://vercel.com/settings/tokens → create token"
-              echo "     Then add to GitHub: Settings → Secrets → Actions → VERCEL_TOKEN"
-            else
-              echo "LIKELY CAUSE: Non-auth error. Check output above."
-              echo "Common causes: project deleted, network issue, rate-limit."
-            fi
+            echo "Likely causes:"
+            echo "  1. VERCEL_TOKEN is invalid or expired"
+            echo "     → Fix: https://vercel.com/settings/tokens → create new token"
+            echo "        Then add to: GitHub → Settings → Secrets → Actions → VERCEL_TOKEN"
+            echo "  2. Project ID is wrong (but .vercel/project.json was created)"
+            echo "  3. Network/rate-limit issue with Vercel"
             echo "============================================"
-            exit $EXIT_CODE
+            exit $PULL_EXIT
           fi
           echo "vercel pull completed successfully"
 
