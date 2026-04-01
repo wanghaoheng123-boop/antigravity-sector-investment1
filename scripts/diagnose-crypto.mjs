@@ -3,7 +3,8 @@
  * Run: node scripts/diagnose-crypto.mjs
  * Optional: VERIFY_APP_BASE_URL=http://127.0.0.1:3000
  */
-const BINANCE = 'https://api.binance.com'
+const BYBIT_TICKERS = 'https://api.bybit.com/v5/market/tickers'
+const COINBASE_CANDLES = 'https://api.exchange.coinbase.com/products/BTC-USD/candles'
 const KRAKEN = 'https://api.kraken.com/0/public/OHLC'
 const COINGECKO_OHLC = 'https://api.coingecko.com/api/v3/coins/bitcoin/ohlc'
 const COINGECKO_SIMPLE = 'https://api.coingecko.com/api/v3/simple/price'
@@ -23,14 +24,35 @@ async function head(name, fn) {
 async function main() {
   console.log('Crypto connectivity simulation\n')
 
-  const b = await head('Binance klines (BTCUSDT 1d x3)', async () => {
-    const res = await fetch(`${BINANCE}/api/v3/klines?symbol=BTCUSDT&interval=1d&limit=3`, {
+  const b = await head('Bybit linear tickers (BTCUSDT)', async () => {
+    const res = await fetch(`${BYBIT_TICKERS}?category=linear&symbol=BTCUSDT`, {
       headers: { Accept: 'application/json', 'User-Agent': 'QUANTAN-diagnose/1.0' },
       signal: AbortSignal.timeout(20_000),
     })
-    const text = await res.text()
-    const ok = res.ok && text.startsWith('[')
-    return { ok, detail: ok ? `HTTP ${res.status}, ${text.length} bytes` : `HTTP ${res.status} ${text.slice(0, 120)}` }
+    const j = await res.json().catch(() => ({}))
+    const ok = res.ok && j.retCode === 0 && j.result?.list?.length > 0
+    return {
+      ok,
+      detail: ok ? `HTTP ${res.status}, funding=${j.result.list[0].fundingRate}` : `HTTP ${res.status}`,
+    }
+  })
+
+  await head('Coinbase candles (BTC-USD 1h x3)', async () => {
+    const end = Math.floor(Date.now() / 1000)
+    const start = end - 3600 * 5
+    const res = await fetch(`${COINBASE_CANDLES}?granularity=3600&start=${start}&end=${end}`, {
+      headers: { Accept: 'application/json' },
+      signal: AbortSignal.timeout(20_000),
+    })
+    const raw = await res.text()
+    let arr
+    try {
+      arr = JSON.parse(raw)
+    } catch {
+      arr = null
+    }
+    const ok = res.ok && Array.isArray(arr) && arr.length >= 1
+    return { ok, detail: ok ? `HTTP ${res.status}, ${arr.length} bars` : `HTTP ${res.status} ${raw.slice(0, 80)}` }
   })
 
   const k = await head('Kraken OHLC (XBTUSD 1440)', async () => {
@@ -96,11 +118,11 @@ async function main() {
   }
 
   console.log('\n── Summary ──')
-  if (!b) console.log('  ⚠ Binance blocked or down — app will use Kraken → CoinGecko for candles.')
-  if (!k) console.log('  ⚠ Kraken OHLC failed — app relies on CoinGecko for candles if Binance fails.')
-  if (!cg) console.log('  ⚠ CoinGecko OHLC failed — if both Binance and Kraken fail, chart may be empty.')
-  if (b && k && cg) console.log('  ✓ All three REST sources reachable from this machine.')
-  console.log('\n  Live WebSocket (wss://stream.binance.com) is not tested here — use the browser Network tab.')
+  if (!b) console.log('  ⚠ Bybit tickers failed — /api/crypto/btc/metrics may be empty.')
+  if (!k) console.log('  ⚠ Kraken OHLC failed — app relies on CoinGecko/Coinbase for candles.')
+  if (!cg) console.log('  ⚠ CoinGecko OHLC failed — if Kraken/Coinbase also fail, chart may be empty.')
+  if (b && k && cg) console.log('  ✓ Core REST sources reachable from this machine.')
+  console.log('\n  Live candle WebSocket (wss://ws.kraken.com/v2) — use the browser Network tab.')
   console.log('  Production PWA: /api/* must be NetworkOnly (see next.config.js) so APIs are not cached.\n')
 }
 

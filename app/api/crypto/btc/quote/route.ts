@@ -3,7 +3,7 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 /**
- * Spot quote for BTC/USD when the browser cannot use Binance WebSocket (geo / firewall).
+ * Spot quote for BTC/USD when the browser has not yet received Coinbase ticker WS.
  * CoinGecko simple price — no API key for low-frequency server-side use.
  */
 export async function GET() {

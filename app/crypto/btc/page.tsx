@@ -20,10 +20,20 @@ const KLineChart = dynamic(() => import('@/components/KLineChart'), {
   ),
 })
 
-// Binance WebSocket streams (wss — secure, public, no API keys)
-const PRICE_WS = 'wss://stream.binance.com:9443/ws/btcusdt@ticker'
-const KLINE_WS = (interval: string) =>
-  `wss://stream.binance.com:9443/stream?streams=btcusdt@kline_${interval}`
+// Live spot price: Coinbase
+const COINBASE_WS = 'wss://ws-feed.exchange.coinbase.com'
+/** Kraken WS v2 OHLC — public, no Binance (see docs.kraken.com/api/docs/websocket-v2/ohlc) */
+const KRAKEN_WS_V2 = 'wss://ws.kraken.com/v2'
+/** Kraken `interval` in minutes; null = no candle WS (e.g. monthly — use REST + poll only). */
+const KRAKEN_OHLC_INTERVAL_MIN: Record<string, number | null> = {
+  '5m': 5,
+  '15m': 15,
+  '1h': 60,
+  '4h': 240,
+  '1d': 1440,
+  '1w': 10080,
+  '1M': null,
+}
 
 const TIMEFRAMES = [
   ['5m', '5m'], ['15m', '15m'], ['1h', '1H'], ['4h', '4H'],
@@ -105,7 +115,7 @@ export default function BtcPage() {
   const [activeIndicator, setActiveIndicator] = useState<string>('ema')
   const [loading, setLoading] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
-  /** Set when REST uses Kraken fallback (Binance blocked or failed). */
+  /** Set when REST uses Kraken/Coinbase fallback (primary OHLC unavailable). */
   const [restFallbackNote, setRestFallbackNote] = useState<string | null>(null)
   const [emaSelection, setEmaSelection] = useState<Record<ChartEmaKey, boolean>>(defaultEmaSelection)
   const [btcPrice, setBtcPrice] = useState<{
@@ -120,7 +130,7 @@ export default function BtcPage() {
   const klineGenRef = useRef(0)
   const klineReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const priceReconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  /** True after Binance ticker WebSocket delivered a price — skip CoinGecko REST header quote. */
+  /** True after Coinbase ticker WS delivered a price — skip redundant REST header quote. */
   const priceFromBinanceWsRef = useRef(false)
   /** Always the interval the user selected (fixes reconnect after timeframe change) */
   const activeRangeRef = useRef(activeRange)
@@ -291,51 +301,89 @@ export default function BtcPage() {
     klineWsRef.current?.close()
     klineWsRef.current = null
 
-    const ws = new WebSocket(KLINE_WS(interval))
+    const intervalMin = KRAKEN_OHLC_INTERVAL_MIN[interval] ?? null
+    if (intervalMin == null) {
+      setWsConnected(false)
+      return
+    }
+
+    const ws = new WebSocket(KRAKEN_WS_V2)
     klineWsRef.current = ws
 
-    ws.onmessage = event => {
+    const applyCandle = (candle: BtcCandle) => {
       if (gen !== klineGenRef.current) return
+      if ([candle.open, candle.high, candle.low, candle.close].some(Number.isNaN)) return
+      const cacheKey = activeRangeRef.current
+      const prevCached = candleCacheRef.current.get(cacheKey) ?? []
+      const nextCached =
+        prevCached.length === 0
+          ? [candle]
+          : prevCached[prevCached.length - 1].time === candle.time
+            ? [...prevCached.slice(0, -1), candle]
+            : [...prevCached, candle]
+      candleCacheRef.current.set(cacheKey, nextCached)
 
-      try {
-        const msg = JSON.parse(event.data)
-        const k = msg.data?.k
-        if (!k) return
+      setCandles((prev) => {
+        if (gen !== klineGenRef.current) return prev
+        if (!prev?.length) return [candle]
+        const last = prev[prev.length - 1]
+        if (last.time === candle.time) return [...prev.slice(0, -1), candle]
+        return [...prev, candle]
+      })
+    }
 
-        const candle: BtcCandle = {
-          time: Math.floor(Number(k.t) / 1000),
-          open: parseFloat(k.o),
-          high: parseFloat(k.h),
-          low: parseFloat(k.l),
-          close: parseFloat(k.c),
-          volume: parseFloat(k.v),
-        }
-        if ([candle.open, candle.high, candle.low, candle.close].some(Number.isNaN)) return
-
-        const cacheKey = activeRangeRef.current
-        // Map#set must receive the new array — never pass a function (unlike React setState).
-        const prevCached = candleCacheRef.current.get(cacheKey) ?? []
-        const nextCached =
-          prevCached.length === 0
-            ? [candle]
-            : prevCached[prevCached.length - 1].time === candle.time
-              ? [...prevCached.slice(0, -1), candle]
-              : [...prevCached, candle]
-        candleCacheRef.current.set(cacheKey, nextCached)
-
-        setCandles(prev => {
-          if (gen !== klineGenRef.current) return prev
-          if (!prev?.length) return [candle]
-          const last = prev[prev.length - 1]
-          if (last.time === candle.time) return [...prev.slice(0, -1), candle]
-          return [...prev, candle]
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          method: 'subscribe',
+          params: {
+            channel: 'ohlc',
+            symbol: ['BTC/USD'],
+            interval: intervalMin,
+            snapshot: true,
+          },
         })
+      )
+      setWsConnected(true)
+    }
+
+    ws.onmessage = (event) => {
+      if (gen !== klineGenRef.current) return
+      try {
+        const msg = JSON.parse(event.data) as {
+          channel?: string
+          type?: string
+          data?: Array<{
+            interval_begin?: string
+            open?: number
+            high?: number
+            low?: number
+            close?: number
+            volume?: number
+          }>
+        }
+        if (msg.channel !== 'ohlc' || !Array.isArray(msg.data) || msg.data.length === 0) return
+        const rows = msg.type === 'snapshot' ? msg.data.slice(-3) : msg.data
+        for (const row of rows) {
+          const begin = row.interval_begin
+          if (!begin) continue
+          const t = Math.floor(new Date(begin).getTime() / 1000)
+          if (!Number.isFinite(t)) continue
+          const candle: BtcCandle = {
+            time: t,
+            open: Number(row.open),
+            high: Number(row.high),
+            low: Number(row.low),
+            close: Number(row.close),
+            volume: Number(row.volume ?? 0),
+          }
+          applyCandle(candle)
+        }
       } catch {
         /* ignore malformed frames */
       }
     }
 
-    ws.onopen = () => setWsConnected(true)
     ws.onerror = () => setWsConnected(false)
     ws.onclose = () => {
       setWsConnected(false)
@@ -355,31 +403,44 @@ export default function BtcPage() {
     }
 
     priceWsRef.current?.close()
-    const ws = new WebSocket(PRICE_WS)
-    priceWsRef.current = ws
 
-    ws.onmessage = event => {
+    const ws = new WebSocket(COINBASE_WS)
+    priceWsRef.current = ws
+    ws.onopen = () => {
+      ws.send(
+        JSON.stringify({
+          type: 'subscribe',
+          product_ids: ['BTC-USD'],
+          channels: ['ticker'],
+        })
+      )
+    }
+    ws.onmessage = (event) => {
       try {
         const d = JSON.parse(event.data) as Record<string, unknown>
-        // Raw ticker stream uses short keys (c/P/h/l/v), some gateways use verbose keys.
-        const price = Number(d.lastPrice ?? d.c)
-        if (Number.isFinite(price) && price > 0) {
+        if (d.type === 'ticker' && d.product_id === 'BTC-USD') {
+          const price = parseFloat(String(d.price))
+          if (!Number.isFinite(price) || price <= 0) return
           priceFromBinanceWsRef.current = true
+          const open24 = parseFloat(String(d.open_24h ?? '0'))
+          const chg = open24 > 0 ? price - open24 : 0
+          const chgPct = open24 > 0 ? ((price - open24) / open24) * 100 : 0
           setBtcPrice({
             price,
-            change24h: Number(d.priceChange ?? d.p) || 0,
-            changePct24h: Number(d.priceChangePercent ?? d.P) || 0,
-            high24h: Number(d.highPrice ?? d.h) || price,
-            low24h: Number(d.lowPrice ?? d.l) || price,
-            volume24h: Number(d.volume ?? d.v) || 0,
+            change24h: chg,
+            changePct24h: chgPct,
+            high24h: parseFloat(String(d.high_24h)) || price,
+            low24h: parseFloat(String(d.low_24h)) || price,
+            volume24h: parseFloat(String(d.volume_24h)) || 0,
           })
         }
       } catch {
         /* ignore */
       }
     }
-
-    ws.onerror = () => {}
+    ws.onerror = () => {
+      /* onclose will reconnect */
+    }
     ws.onclose = () => {
       priceReconnectTimerRef.current = setTimeout(() => {
         priceReconnectTimerRef.current = null
@@ -388,7 +449,7 @@ export default function BtcPage() {
     }
   }, [])
 
-  /** When Binance WSS is blocked, show header price from CoinGecko via same-origin API. */
+  /** When Coinbase ticker WS has not fired yet, hydrate header from same-origin quote / CoinGecko. */
   useEffect(() => {
     const loadRestQuote = async () => {
       if (priceFromBinanceWsRef.current) return
@@ -446,7 +507,7 @@ export default function BtcPage() {
     }
   }, [])
 
-  /** Binance ticker — one connection for the page lifetime. */
+  /** Coinbase ticker — one connection for the page lifetime. */
   useEffect(() => {
     connectPriceWs()
     return () => {
@@ -483,6 +544,15 @@ export default function BtcPage() {
     }
   }, [activeTab, activeRange, fetchCandles, connectKlineWs])
 
+  /** Refresh OHLC on an interval when geo-blocking breaks kline WSS (REST chain still works). */
+  useEffect(() => {
+    if (activeTab !== 'chart') return
+    const id = setInterval(() => {
+      fetchCandles(activeRangeRef.current)
+    }, 75_000)
+    return () => clearInterval(id)
+  }, [activeTab, fetchCandles])
+
   useEffect(() => {
     return () => {
       candlesAbortRef.current?.abort()
@@ -514,7 +584,7 @@ export default function BtcPage() {
                 </div>
                 <h1 className="text-2xl font-bold text-white tracking-wide">Bitcoin (BTC)</h1>
                 <p className="text-sm text-slate-400 mt-0.5">
-                  BTC/USDT · Primary: CoinGecko · Fallbacks: Binance, Kraken · Live: Binance WebSocket
+                  BTC/USD · OHLC: CoinGecko → Kraken → Coinbase · Live ticker: Coinbase · Candle stream: Kraken
                 </p>
               </div>
             </div>
@@ -624,8 +694,10 @@ export default function BtcPage() {
           <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4 shadow-xl">
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-3">
-                <span className="text-sm font-semibold text-white">BTC/USDT · Binance</span>
-                <span className="text-[10px] text-amber-400/60 font-mono border border-amber-400/20 px-1.5 py-0.5 rounded">WSS LIVE</span>
+                <span className="text-sm font-semibold text-white">BTC · multi-source chart</span>
+                <span className="text-[10px] text-amber-400/60 font-mono border border-amber-400/20 px-1.5 py-0.5 rounded">
+                  {wsConnected ? 'KLINE WSS' : 'REST + POLL'}
+                </span>
               </div>
               <div className="flex items-center gap-3 text-xs text-slate-500 font-mono">
                 <span>{activeRange.toUpperCase()} BARS</span>
@@ -646,7 +718,7 @@ export default function BtcPage() {
             )}
             {loading && candles.length === 0 ? (
               <div className="h-[480px] bg-slate-800/20 rounded-xl animate-pulse flex flex-col items-center justify-center border border-slate-800/50">
-                <span className="text-slate-500 text-sm font-mono mb-2">Connecting to Binance...</span>
+                <span className="text-slate-500 text-sm font-mono mb-2">Loading market data…</span>
               </div>
             ) : candles.length > 0 ? (
               <CryptoChartBoundary title="BTC chart crashed">
@@ -676,7 +748,7 @@ export default function BtcPage() {
 
         <div className="text-center text-[10px] text-slate-700 max-w-3xl mx-auto space-y-1">
           <p>
-            Data sourced from CoinGecko (primary, no geo-blocking), Binance REST, Kraken, and Binance WebSocket. Geo-restriction messages mean the server region is blocked — not a bug.
+            Spot ticker from Coinbase. OHLC from CoinGecko, Kraken REST, or Coinbase candles. Live candles via Kraken WebSocket when a timeframe is supported (monthly uses REST only). Derivatives metrics from Bybit/OKX — not Binance.
           </p>
           <p>Prices are indicative.</p>
         </div>

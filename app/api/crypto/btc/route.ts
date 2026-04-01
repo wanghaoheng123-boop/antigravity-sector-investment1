@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const BINANCE_BASE = 'https://api.binance.com'
 const KRAKEN_OHLC = 'https://api.kraken.com/0/public/OHLC'
-const SYMBOL = 'BTCUSDT'
+const COINBASE_CANDLES = 'https://api.exchange.coinbase.com/products/BTC-USD/candles'
+const SYMBOL = 'BTCUSD'
 
 /** Kraken interval in minutes — see https://docs.kraken.com/api/docs/rest-api/get-ohlc-data */
 const KRAKEN_INTERVAL_MINUTES: Record<string, number> = {
@@ -61,15 +61,6 @@ type CandleRow = {
   volume: number
 }
 
-function isGeoRestricted(text: string, status: number): boolean {
-  return (
-    status === 451 ||
-    text.toLowerCase().includes('restricted location') ||
-    text.toLowerCase().includes('eligibility') ||
-    text.toLowerCase().includes('service unavailable from a restricted')
-  )
-}
-
 /**
  * CoinGecko primary OHLC — globally accessible, no geo-blocking.
  * OHLC format: [timestamp_ms, open, high, low, close]
@@ -118,38 +109,60 @@ async function fetchCoinGeckoOhlc(binanceInterval: string, limit: number): Promi
 }
 
 /**
- * Binance REST — geo-blocked from Vercel IPs in many regions.
- * Used as secondary fallback only when CoinGecko fails.
+ * Coinbase Exchange candles — public, no Binance. Granularity must be one of
+ * 60, 300, 900, 3600, 21600, 86400 (no native 4h; caller skips).
+ * Each row: [ time, low, high, open, close, volume ] (time in seconds).
  */
-async function fetchBinanceOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
-  const url = `${BINANCE_BASE}/api/v3/klines?symbol=${SYMBOL}&interval=${binanceInterval}&limit=${limit}`
+async function fetchCoinbaseOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
+  const gran: Record<string, number | null> = {
+    '5m': 300,
+    '15m': 900,
+    '1h': 3600,
+    '4h': null,
+    '1d': 86400,
+    '1w': 86400,
+    '1M': 86400,
+  }
+  const g = gran[binanceInterval]
+  if (g == null) return null
+  const endSec = Math.floor(Date.now() / 1000)
+  const startSec = endSec - g * Math.min(limit, 300)
+  const url = `${COINBASE_CANDLES}?granularity=${g}&start=${startSec}&end=${endSec}`
   try {
-    const res = await fetchWithTimeout(url, 15_000, 2)
-    const text = await res.text()
-    if (!res.ok || isGeoRestricted(text, res.status)) return null
-    const data: unknown[] = JSON.parse(text) as unknown[]
-    if (!Array.isArray(data) || data.length === 0) return null
-    const candles = data
-      .filter((k: unknown): k is unknown[] => Array.isArray(k) && k.length >= 6 && k[4] != null)
-      .map((k: unknown[]) => ({
-        time: Math.floor(Number(k[0]) / 1000),
-        open: parseFloat(String(k[1])),
-        high: parseFloat(String(k[2])),
-        low: parseFloat(String(k[3])),
-        close: parseFloat(String(k[4])),
-        volume: parseFloat(String(k[5])),
-      }))
-      .filter((c) =>
-        [c.open, c.high, c.low, c.close, c.volume].every((v) => Number.isFinite(v) && v >= 0) &&
-        c.high >= c.low && c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close)
+    const res = await fetchWithTimeout(url, 20_000, 2)
+    if (!res.ok) return null
+    const rows = (await res.json()) as unknown
+    if (!Array.isArray(rows) || rows.length === 0) return null
+    const candles = rows
+      .map((row: unknown) => {
+        if (!Array.isArray(row) || row.length < 6) return null
+        const t = Number(row[0])
+        const low = parseFloat(String(row[1]))
+        const high = parseFloat(String(row[2]))
+        const open = parseFloat(String(row[3]))
+        const close = parseFloat(String(row[4]))
+        const volume = parseFloat(String(row[5]))
+        if (![open, high, low, close, volume].every(Number.isFinite)) return null
+        return { time: t, open, high, low, close, volume }
+      })
+      .filter((c): c is CandleRow => c !== null)
+      .filter(
+        (c) =>
+          c.high >= c.low &&
+          c.high >= Math.max(c.open, c.close) &&
+          c.low <= Math.min(c.open, c.close)
       )
-    return candles.length ? candles : null
-  } catch { return null }
+      .sort((a, b) => a.time - b.time)
+    const slice = candles.slice(-Math.min(limit, candles.length))
+    return slice.length ? slice : null
+  } catch {
+    return null
+  }
 }
 
 /**
- * Kraken OHLC — XBTUSD pair, often accessible even when Binance is blocked.
- * Used as tertiary fallback.
+ * Kraken OHLC — XBTUSD pair (reliable public REST).
+ * Secondary fallback when CoinGecko fails.
  */
 async function fetchKrakenOhlc(binanceInterval: string, limit: number): Promise<CandleRow[] | null> {
   const minutes = KRAKEN_INTERVAL_MINUTES[binanceInterval] ?? 1440
@@ -197,7 +210,7 @@ export async function GET(req: NextRequest) {
   const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 1000) : 500
   const binanceInterval = INTERVAL_MAP[interval] || '1d'
 
-  // ── Primary: CoinGecko (globally accessible) ──────────────────────────────
+  // ── Primary: CoinGecko (globally accessible, no geo-blocking) ───────────────
   const cg = await fetchCoinGeckoOhlc(binanceInterval, limit)
   if (cg?.length) {
     return NextResponse.json(
@@ -211,22 +224,7 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  // ── Secondary: Binance (geo-blocked from Vercel IPs in many regions) ───────
-  const bn = await fetchBinanceOhlc(binanceInterval, limit)
-  if (bn?.length) {
-    return NextResponse.json(
-      {
-        symbol: SYMBOL,
-        interval: binanceInterval,
-        candles: bn,
-        source: 'Binance Public API',
-        note: 'CoinGecko was unavailable; served from Binance.',
-      },
-      { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
-    )
-  }
-
-  // ── Tertiary: Kraken ───────────────────────────────────────────────────────
+  // ── Secondary: Kraken (when CoinGecko rate-limits or fails) ─
   const kr = await fetchKrakenOhlc(binanceInterval, limit)
   if (kr?.length) {
     return NextResponse.json(
@@ -235,7 +233,22 @@ export async function GET(req: NextRequest) {
         interval: binanceInterval,
         candles: kr,
         source: 'Kraken Public API (fallback)',
-        note: 'CoinGecko and Binance were unavailable; served from Kraken (volume may be in XBT not USD).',
+        note: 'CoinGecko was unavailable; served from Kraken XBT/USD (volume in base currency).',
+      },
+      { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
+    )
+  }
+
+  // ── Tertiary: Coinbase Exchange (no Binance; 4h not supported here) ─────────
+  const cb = await fetchCoinbaseOhlc(binanceInterval, limit)
+  if (cb?.length) {
+    return NextResponse.json(
+      {
+        symbol: SYMBOL,
+        interval: binanceInterval,
+        candles: cb,
+        source: 'Coinbase Exchange API (fallback)',
+        note: 'CoinGecko and Kraken were unavailable; served BTC-USD candles from Coinbase.',
       },
       { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
     )
@@ -246,7 +259,7 @@ export async function GET(req: NextRequest) {
     {
       error: 'btc_data_unavailable',
       userMessage:
-        'All BTC data sources (CoinGecko, Binance, Kraken) are currently unreachable or rate-limited from this server region. The chart and price may still work from your browser via the client-side CoinGecko fallback.',
+        'BTC OHLC could not be loaded from CoinGecko, Kraken, or Coinbase from this server. Open the BTC page in your browser — it will try CoinGecko directly and periodic refresh.',
     },
     { status: 503 }
   )

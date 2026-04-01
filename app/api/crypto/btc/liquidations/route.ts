@@ -1,73 +1,40 @@
 import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
-// In-memory cache for liquidation data — 10-second TTL
-let _cache: { data: any; expiresAt: number } | null = null
+const OKX_BASE = 'https://www.okx.com'
+
+let _cache: { data: Record<string, unknown>; expiresAt: number } | null = null
 const CACHE_TTL_MS = 10_000
+
+type OkxLiqRow = {
+  details?: Array<{
+    bkPx?: string
+    sz?: string
+    side?: string
+    posSide?: string
+    time?: string
+  }>
+}
 
 export async function GET() {
   const now = Date.now()
 
   if (_cache && now < _cache.expiresAt) {
-    return NextResponse.json({ ..._cache.data, _cached: true }, {
-      headers: { 'Cache-Control': 'public, max-age=10, stale-while-revalidate=20' } }
+    return NextResponse.json(
+      { ..._cache.data, _cached: true },
+      { headers: { 'Cache-Control': 'public, max-age=10, stale-while-revalidate=20' } }
     )
   }
 
   try {
-    const forceOrdersRes = await fetch(
-      'https://fapi.binance.com/fapi/v1/forceOrders?symbol=BTCUSDT&limit=200',
-      {
-        headers: { 'Accept': 'application/json', 'User-Agent': 'QUANTAN/1.0' },
-        signal: AbortSignal.timeout(10_000),
-      } as RequestInit
-    )
-    if (forceOrdersRes.ok) {
-      const orders = (await forceOrdersRes.json()) as Array<{
-        ap?: string
-        q?: string
-        S?: 'BUY' | 'SELL'
-        time?: number
-      }>
-      const ONE_DAY = 24 * 60 * 60 * 1000
-      const recent = orders.filter((o) => Number(o.time ?? 0) > now - ONE_DAY)
-      const buys = recent.filter((o) => o.S === 'BUY')
-      const sells = recent.filter((o) => o.S === 'SELL')
-      const buyVolume = buys.reduce((s, o) => s + (parseFloat(o.ap ?? '0') * parseFloat(o.q ?? '0') || 0), 0)
-      const sellVolume = sells.reduce((s, o) => s + (parseFloat(o.ap ?? '0') * parseFloat(o.q ?? '0') || 0), 0)
+    const url = `${OKX_BASE}/api/v5/public/liquidation-orders?instType=SWAP&uly=BTC-USDT&state=filled&limit=100`
+    const res = await fetch(url, {
+      headers: { Accept: 'application/json', 'User-Agent': 'QUANTAN/1.0' },
+      signal: AbortSignal.timeout(12_000),
+    } as RequestInit)
 
-      const netDirection: 'LONG_BIAS' | 'SHORT_BIAS' | 'NEUTRAL' =
-        buyVolume > sellVolume ? 'LONG_BIAS' : sellVolume > buyVolume ? 'SHORT_BIAS' : 'NEUTRAL'
-
-      const result = {
-        totalLiquidations: recent.length,
-        buyLiquidations: buys.length,
-        sellLiquidations: sells.length,
-        buyVolume,
-        sellVolume,
-        netDirection,
-        largeTradeCount: recent.length,
-        source: 'Binance Futures forceOrders API',
-        fetchedAt: new Date().toISOString(),
-      }
-
-      _cache = { data: result, expiresAt: now + CACHE_TTL_MS }
-
-      return NextResponse.json(
-        { ...result, _cached: false },
-        { headers: { 'Cache-Control': 'public, max-age=10, stale-while-revalidate=20' } }
-      )
-    }
-
-    // Fallback when forceOrders is blocked: infer pressure from large spot prints.
-    const res = await fetch(
-      'https://api.binance.com/api/v3/trades?symbol=BTCUSDT&limit=500',
-      {
-        headers: { 'Accept': 'application/json', 'User-Agent': 'QUANTAN/1.0' },
-        signal: AbortSignal.timeout(10_000),
-      } as RequestInit
-    )
     if (!res.ok) {
+      const text = await res.text().catch(() => '')
       return NextResponse.json(
         {
           totalLiquidations: 0,
@@ -76,43 +43,73 @@ export async function GET() {
           buyVolume: 0,
           sellVolume: 0,
           netDirection: 'NEUTRAL',
-          source: 'Unavailable (Binance blocked/unreachable)',
+          source: 'Unavailable (OKX unreachable)',
           fetchedAt: new Date().toISOString(),
           degraded: true as const,
-          userMessage:
-            'Liquidations feed is unavailable from Binance in this region/network. Quant cards show neutral placeholders.',
-          error: `Binance HTTP ${res.status}`,
+          userMessage: `Liquidation history unavailable (HTTP ${res.status}).`,
+          error: text.slice(0, 200),
         },
         { status: 200, headers: { 'Cache-Control': 'no-store' } }
       )
     }
-    const trades: any[] = await res.json()
 
-    const LARGE_THRESHOLD = 100_000
+    const json = (await res.json()) as { code?: string; data?: OkxLiqRow[] }
+    if (json.code !== '0' || !Array.isArray(json.data)) {
+      return NextResponse.json(
+        {
+          totalLiquidations: 0,
+          buyLiquidations: 0,
+          sellLiquidations: 0,
+          buyVolume: 0,
+          sellVolume: 0,
+          netDirection: 'NEUTRAL',
+          source: 'OKX (no rows)',
+          fetchedAt: new Date().toISOString(),
+          degraded: true as const,
+          userMessage: 'No liquidation data returned from OKX.',
+        },
+        { status: 200, headers: { 'Cache-Control': 'no-store' } }
+      )
+    }
+
     const ONE_DAY = 24 * 60 * 60 * 1000
+    const flat: Array<{ price: number; sz: number; side: string; posSide: string; time: number }> = []
+    for (const row of json.data) {
+      for (const d of row.details ?? []) {
+        const price = parseFloat(d.bkPx ?? '0')
+        const sz = parseFloat(d.sz ?? '0')
+        const time = parseInt(String(d.time ?? d.ts ?? '0'), 10)
+        if (!Number.isFinite(price) || !Number.isFinite(sz) || sz <= 0) continue
+        if (now - time > ONE_DAY) continue
+        flat.push({
+          price,
+          sz,
+          side: String(d.side ?? ''),
+          posSide: String(d.posSide ?? ''),
+          time,
+        })
+      }
+    }
 
-    const recentLarge = trades.filter(t => {
-      const notional = parseFloat(t.price) * parseFloat(t.qty)
-      return notional > LARGE_THRESHOLD && (now - t.time) < ONE_DAY
-    })
+    /** Long liquidation: forced sell (close long). Short liquidation: forced buy (close short). */
+    const longLiq = flat.filter((x) => x.posSide === 'long' && x.side === 'sell')
+    const shortLiq = flat.filter((x) => x.posSide === 'short' && x.side === 'buy')
 
-    const buys = recentLarge.filter(t => t.isBuyerMaker === false)
-    const sells = recentLarge.filter(t => t.isBuyerMaker === true)
-    const buyVolume = buys.reduce((s, t) => s + parseFloat(t.price) * parseFloat(t.qty), 0)
-    const sellVolume = sells.reduce((s, t) => s + parseFloat(t.price) * parseFloat(t.qty), 0)
+    const buyVolume = shortLiq.reduce((s, x) => s + x.price * x.sz, 0)
+    const sellVolume = longLiq.reduce((s, x) => s + x.price * x.sz, 0)
 
     const netDirection: 'LONG_BIAS' | 'SHORT_BIAS' | 'NEUTRAL' =
-      buyVolume > sellVolume ? 'LONG_BIAS' : sellVolume > buyVolume ? 'SHORT_BIAS' : 'NEUTRAL'
+      sellVolume > buyVolume ? 'LONG_BIAS' : buyVolume > sellVolume ? 'SHORT_BIAS' : 'NEUTRAL'
 
     const result = {
-      totalLiquidations: recentLarge.length,
-      buyLiquidations: buys.length,
-      sellLiquidations: sells.length,
+      totalLiquidations: flat.length,
+      buyLiquidations: shortLiq.length,
+      sellLiquidations: longLiq.length,
       buyVolume,
       sellVolume,
       netDirection,
-      largeTradeCount: recentLarge.length,
-      source: 'Binance spot trades proxy (fallback, not true liquidation tape)',
+      largeTradeCount: flat.length,
+      source: 'OKX public liquidation orders (BTC-USDT-SWAP)',
       fetchedAt: new Date().toISOString(),
     }
 
@@ -132,11 +129,10 @@ export async function GET() {
         buyVolume: 0,
         sellVolume: 0,
         netDirection: 'NEUTRAL',
-        source: 'Unavailable (Binance blocked/unreachable)',
+        source: 'Unavailable (error)',
         fetchedAt: new Date().toISOString(),
         degraded: true as const,
-        userMessage:
-          'Liquidations feed failed to load. Quant cards show neutral placeholders until Binance is reachable.',
+        userMessage: 'Liquidation feed failed to load.',
         error: String(error),
       },
       { status: 200, headers: { 'Cache-Control': 'no-store' } }

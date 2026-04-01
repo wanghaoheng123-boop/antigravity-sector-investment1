@@ -15,7 +15,7 @@
     "check:smoke:local:extended:nosearch": "node scripts/run-smoke-local-extended-nosearch.mjs",
     "verify:logic": "node scripts/verify-core-logic.mjs",
     "verify:indicators": "node scripts/verify-indicator-math.mjs",
-    "verify:btc": "node scripts/verify-btc-binance-sample.mjs",
+    "verify:btc": "node scripts/verify-btc-ohlc-sample.mjs",
     "diagnose:crypto": "node scripts/diagnose-crypto.mjs",
     "verify:data": "npm run verify:logic && npm run verify:indicators && npm run verify:btc",
     "check:all": "npm run verify:data && npm run validate:data && npm run check:smoke",

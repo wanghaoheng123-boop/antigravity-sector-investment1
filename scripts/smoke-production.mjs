@@ -97,7 +97,7 @@ async function main() {
   const btc = await getJson('/api/crypto/btc?interval=1d&limit=15')
   if (btc.status === 502 || btc.status === 503) {
     console.log(
-      `  ⚠ GET /api/crypto/btc → ${btc.status} (Binance unreachable from this host — skip BTC candle checks; run verify:btc for direct Binance)`
+      `  ⚠ GET /api/crypto/btc → ${btc.status} (OHLC providers unreachable — skip BTC candle checks; run verify:btc for direct Kraken)`
     )
   } else {
     passed &= ok(btc.ok && btc.status === 200, `GET /api/crypto/btc → ${btc.status}`)
@@ -119,7 +119,7 @@ async function main() {
 
   const btcM = await getJson('/api/crypto/btc/metrics')
   if (btcM.status === 502 || btcM.status === 503) {
-    console.log('  ⚠ /api/crypto/btc/metrics unavailable (Binance — optional)')
+    console.log('  ⚠ /api/crypto/btc/metrics unavailable (Bybit/OKX — optional)')
   } else {
     passed &= ok(btcM.ok && btcM.status === 200, `GET /api/crypto/btc/metrics → ${btcM.status}`)
     const fj = btcM.json

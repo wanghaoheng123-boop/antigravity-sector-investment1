@@ -1,7 +1,19 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { BtcCandle, calcRSI, calcMACD, calcEMA, calcBollingerBands, calcVWAP, interpretFundingRate, RAINBOW_BANDS, getRainbowBand } from '@/lib/crypto'
+import {
+  BtcCandle,
+  calcRSI,
+  calcMACD,
+  calcEMA,
+  calcBollingerBands,
+  calcVWAP,
+  calcATR,
+  calcStochastic,
+  interpretFundingRate,
+  RAINBOW_BANDS,
+  getRainbowBand,
+} from '@/lib/crypto'
 import { ma200Regime, sma200DeviationPct } from '@/lib/quant/technicals'
 import { apiUrl } from '@/lib/apiBase'
 
@@ -52,20 +64,27 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   )
 }
 
-async function fetchJson(path: string) {
-  const r = await fetch(apiUrl(path), { cache: 'no-store', headers: { Accept: 'application/json' } })
-  const text = await r.text()
-  let data: unknown = null
+/** Never throws — derivatives APIs are often geo-blocked; UI degrades gracefully. */
+async function fetchJsonSafe(path: string): Promise<{ ok: true; data: unknown } | { ok: false; message: string }> {
   try {
-    data = text ? JSON.parse(text) : null
-  } catch {
-    throw new Error(`${path} → invalid JSON (HTTP ${r.status})`)
+    const r = await fetch(apiUrl(path), { cache: 'no-store', headers: { Accept: 'application/json' } })
+    const text = await r.text()
+    let data: unknown = null
+    try {
+      data = text ? JSON.parse(text) : null
+    } catch {
+      return { ok: false, message: `${path} → invalid JSON (HTTP ${r.status})` }
+    }
+    if (!r.ok) {
+      const err = (data as { userMessage?: string; error?: string; details?: string })?.userMessage
+        ?? (data as { error?: string })?.error
+        ?? (data as { details?: string })?.details
+      return { ok: false, message: typeof err === 'string' ? err : `HTTP ${r.status}` }
+    }
+    return { ok: true, data }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : String(e) }
   }
-  if (!r.ok) {
-    const err = (data as { userMessage?: string; error?: string })?.userMessage ?? (data as { error?: string })?.error
-    throw new Error(typeof err === 'string' ? err : `HTTP ${r.status}`)
-  }
-  return data
 }
 
 export default function BtcQuantLab({ candles }: Props) {
@@ -79,15 +98,12 @@ export default function BtcQuantLab({ candles }: Props) {
     setLoading(true)
     setDerivativesError(null)
     ;(async () => {
-      const [mr, lr] = await Promise.allSettled([
-        fetchJson('/api/crypto/btc/metrics'),
-        fetchJson('/api/crypto/btc/liquidations'),
-      ])
-      if (mr.status === 'fulfilled') setMetrics(mr.value as MetricsData)
-      if (lr.status === 'fulfilled') setLiq(lr.value as LiqData)
+      const [mr, lr] = await Promise.all([fetchJsonSafe('/api/crypto/btc/metrics'), fetchJsonSafe('/api/crypto/btc/liquidations')])
+      if (mr.ok) setMetrics(mr.data as MetricsData)
+      if (lr.ok) setLiq(lr.data as LiqData)
       const errs: string[] = []
-      if (mr.status === 'rejected') errs.push(`metrics: ${mr.reason instanceof Error ? mr.reason.message : String(mr.reason)}`)
-      if (lr.status === 'rejected') errs.push(`liquidations: ${lr.reason instanceof Error ? lr.reason.message : String(lr.reason)}`)
+      if (!mr.ok) errs.push(`metrics: ${mr.message}`)
+      if (!lr.ok) errs.push(`liquidations: ${lr.message}`)
       if (errs.length) setDerivativesError(errs.join(' · '))
     })()
       .catch((e) => console.error('[BtcQuantLab]', e))
@@ -121,6 +137,14 @@ export default function BtcQuantLab({ candles }: Props) {
   const vwapData = calcVWAP(candles)
   const latestVWAP = vwapData[vwapData.length - 1]?.value ?? latestClose
   const fundingInfo = metrics?.fundingRate != null ? interpretFundingRate(metrics.fundingRate) : null
+
+  const atrSeries = calcATR(candles, 14)
+  const latestATR = atrSeries.length > 0 ? atrSeries[atrSeries.length - 1] : NaN
+  const stoch = calcStochastic(candles, 14, 3, 3)
+  const latestStK = stoch.k.length > 0 ? stoch.k[stoch.k.length - 1] : NaN
+  const latestStD = stoch.d.length > 0 ? stoch.d[stoch.d.length - 1] : NaN
+  const stochOk = Number.isFinite(latestStK) && Number.isFinite(latestStD)
+  const atrOk = Number.isFinite(latestATR)
 
   // Rainbow model — approximate BTC rainbow from halving cycles
   const rainbowHigh = high20 * 1.5
@@ -170,6 +194,34 @@ export default function BtcQuantLab({ candles }: Props) {
       color: latestClose > latestBB.upper ? 'text-red-400' : latestClose < latestBB.lower ? 'text-green-400' : 'text-slate-400',
     },
     {
+      label: 'ATR(14)',
+      value: atrOk ? `$${latestATR.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : '—',
+      signal: !atrOk
+        ? 'INSUFFICIENT DATA'
+        : latestATR > latestClose * 0.05
+          ? 'HIGH VOL'
+          : 'NORMAL VOL',
+      color: !atrOk ? 'text-slate-500' : latestATR > latestClose * 0.05 ? 'text-amber-400' : 'text-slate-400',
+    },
+    {
+      label: 'Stoch %K / %D',
+      value: stochOk ? `${latestStK.toFixed(0)} / ${latestStD.toFixed(0)}` : '—',
+      signal: !stochOk
+        ? 'INSUFFICIENT DATA'
+        : latestStK > 80 && latestStD > 80
+          ? 'OVERBOUGHT'
+          : latestStK < 20 && latestStD < 20
+            ? 'OVERSOLD'
+            : 'NEUTRAL',
+      color: !stochOk
+        ? 'text-slate-500'
+        : latestStK > 80
+          ? 'text-red-400'
+          : latestStK < 20
+            ? 'text-green-400'
+            : 'text-slate-400',
+    },
+    {
       label: 'Funding Rate',
       value: metrics?.fundingRate != null ? `${(metrics.fundingRate * 100).toFixed(4)}%` : 'N/A',
       signal: fundingInfo?.signal ?? 'N/A',
@@ -209,11 +261,14 @@ export default function BtcQuantLab({ candles }: Props) {
 
   return (
     <div className="space-y-6">
+      <p className="text-[11px] text-slate-500 border border-slate-800 rounded-lg px-3 py-2 bg-slate-900/40">
+        <span className="text-emerald-400/90 font-semibold">Live quant</span> — RSI, MACD, EMA, Bollinger, VWAP, ATR(14), Stochastic(14,3,3), 200MA regime recalculated in your browser from the loaded candle series ({candles.length} bars). Derivatives (funding, OI, liquidations) require exchange APIs and may be empty when geo-blocked.
+      </p>
       {derivativesError && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/90">
           <span className="font-medium text-amber-100">Derivatives / liquidity API</span>
           <p className="text-amber-200/80 mt-0.5">{derivativesError}</p>
-          <p className="text-slate-500 mt-1">Chart data may still load from REST fallbacks; Binance-only metrics fail when the exchange blocks your region.</p>
+          <p className="text-slate-500 mt-1">Price-action indicators above still work; perp metrics load from Bybit/OKX public APIs (no Binance).</p>
         </div>
       )}
       {/* Top signals grid */}
@@ -261,7 +316,7 @@ export default function BtcQuantLab({ candles }: Props) {
             />
             <MetricCard
               label="Data Source"
-              value={metrics?.source?.includes('Unavailable') ? 'Unavailable' : 'Binance'}
+              value={metrics?.source?.includes('Unavailable') ? 'Unavailable' : (metrics?.source ?? '—')}
               sub={metrics?.fetchedAt ? `Updated ${new Date(metrics.fetchedAt).toLocaleTimeString()}` : undefined}
               color="text-slate-500"
             />

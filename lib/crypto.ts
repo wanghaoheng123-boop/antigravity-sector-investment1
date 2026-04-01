@@ -81,6 +81,61 @@ export function calcMACD(prices: number[], fast = 12, slow = 26, signal = 9) {
   return result
 }
 
+/** Average True Range (Wilder), for volatility / stop placement */
+export function calcATR(candles: BtcCandle[], period = 14): number[] {
+  const n = candles.length
+  const tr: number[] = new Array(n).fill(NaN)
+  const atr: number[] = new Array(n).fill(NaN)
+  if (n < 2) return atr
+  for (let i = 1; i < n; i++) {
+    const h = candles[i].high
+    const l = candles[i].low
+    const pc = candles[i - 1].close
+    tr[i] = Math.max(h - l, Math.abs(h - pc), Math.abs(l - pc))
+  }
+  if (n < period + 1) return atr
+  let sum = 0
+  for (let i = 1; i <= period; i++) sum += tr[i]
+  atr[period] = sum / period
+  for (let i = period + 1; i < n; i++) {
+    atr[i] = (atr[i - 1] * (period - 1) + tr[i]) / period
+  }
+  return atr
+}
+
+/** Stochastic %K / %D (classic 14,3,3) — %K = SMA of raw %K, %D = SMA of %K */
+export function calcStochastic(
+  candles: BtcCandle[],
+  kPeriod = 14,
+  smoothK = 3,
+  smoothD = 3,
+): { k: number[]; d: number[] } {
+  const n = candles.length
+  const rawK: number[] = new Array(n).fill(NaN)
+  const k: number[] = new Array(n).fill(NaN)
+  const d: number[] = new Array(n).fill(NaN)
+  for (let i = kPeriod - 1; i < n; i++) {
+    const slice = candles.slice(i - kPeriod + 1, i + 1)
+    const hh = Math.max(...slice.map((c) => c.high))
+    const ll = Math.min(...slice.map((c) => c.low))
+    const c = candles[i].close
+    rawK[i] = hh === ll ? 50 : ((c - ll) / (hh - ll)) * 100
+  }
+  const startK = kPeriod - 1 + smoothK - 1
+  for (let i = startK; i < n; i++) {
+    let s = 0
+    for (let j = 0; j < smoothK; j++) s += rawK[i - j] ?? 0
+    k[i] = s / smoothK
+  }
+  const startD = startK + smoothD - 1
+  for (let i = startD; i < n; i++) {
+    let s = 0
+    for (let j = 0; j < smoothD; j++) s += k[i - j] ?? 0
+    d[i] = s / smoothD
+  }
+  return { k, d }
+}
+
 /** Bollinger Bands */
 export function calcBollingerBands(prices: number[], period = 20, stdDev = 2) {
   const result = new Array(prices.length).fill({ mid: NaN, upper: NaN, lower: NaN })
