@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -13,6 +13,11 @@ import { generateDarkPoolPrints } from '@/lib/mockData'
 import { DarkPoolPrint } from '@/lib/sectors'
 import type { DarkPoolAnalysis } from '@/lib/darkpool'
 import { buildSingleSessionSignal } from '@/lib/sessionSignalsFromQuotes'
+import { tradingDefaultEmaFlags } from '@/lib/chartEma'
+import { STOCK_CHART_RANGES, isStockIntradayPollRange } from '@/lib/chartYahoo'
+
+const CHART_POLL_MS = (range: string) =>
+  ['1m', '3m', '5m'].includes(range) ? 30_000 : 60_000
 
 const KLineChart = dynamic(() => import('@/components/KLineChart'), { ssr: false })
 
@@ -51,23 +56,33 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
   const [activeTab, setActiveTab] = useState('chart')
   const [activeRange, setActiveRange] = useState('6M')
 
+  const fetchChartData = useCallback(
+    (range: string) => {
+      fetch(`/api/chart/${encodeURIComponent(sector.etf)}?range=${encodeURIComponent(range)}`)
+        .then((r) => {
+          if (!r.ok) return Promise.reject(new Error(`HTTP ${r.status}`))
+          return r.json()
+        })
+        .then((data) => {
+          setCandles(data.candles ?? [])
+          setDarkPoolMarkers(data.darkPoolMarkers ?? [])
+        })
+        .catch(() => {})
+    },
+    [sector.etf]
+  )
+
   useEffect(() => {
-    let cancelled = false
-    fetch(`/api/chart/${encodeURIComponent(sector.etf)}?range=${encodeURIComponent(activeRange)}`)
-      .then((r) => {
-        if (!r.ok) return Promise.reject(new Error(`HTTP ${r.status}`))
-        return r.json()
-      })
-      .then((data) => {
-        if (cancelled) return
-        setCandles(data.candles ?? [])
-        setDarkPoolMarkers(data.darkPoolMarkers ?? [])
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
-  }, [sector.etf, activeRange])
+    fetchChartData(activeRange)
+  }, [sector.etf, activeRange, fetchChartData])
+
+  useEffect(() => {
+    if (activeTab !== 'chart') return
+    if (!isStockIntradayPollRange(activeRange)) return
+    const ms = CHART_POLL_MS(activeRange)
+    const id = setInterval(() => fetchChartData(activeRange), ms)
+    return () => clearInterval(id)
+  }, [activeTab, activeRange, fetchChartData])
 
   useEffect(() => {
     const pull = () => {
@@ -107,6 +122,19 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
     () => (quote ? buildSingleSessionSignal(sector.etf, quote) : null),
     [quote, sector.etf]
   )
+
+  const sectorIndicators = useMemo(
+    () => ({
+      ...tradingDefaultEmaFlags(),
+      vwap: false,
+      bollingerBands: false,
+      fibonacci: false,
+    }),
+    []
+  )
+
+  const barKind =
+    ['1m', '3m', '5m', '15m', '1H', '4H', '1D', '1W'].includes(activeRange) ? 'INTRADAY' : 'DAILY+'
 
   // newsMarkers removed — live news headlines now shown in NewsFeed panel below chart
 
@@ -200,12 +228,13 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
                 ))}
               </div>
               {activeTab === 'chart' && (
-                <div className="flex gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-                  {['1M', '3M', '6M', '1Y'].map(r => (
+                <div className="flex flex-wrap justify-end gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800 max-w-[min(100%,42rem)]">
+                  {STOCK_CHART_RANGES.map((r) => (
                     <button
                       key={r}
+                      type="button"
                       onClick={() => setActiveRange(r)}
-                      className={`px-3 py-1.5 text-xs rounded-md transition-all ${
+                      className={`px-2 py-1 text-[11px] rounded-md transition-all ${
                         activeRange === r
                           ? 'bg-slate-700 text-white'
                           : 'text-slate-500 hover:text-slate-300'
@@ -221,10 +250,15 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
             {/* Chart tab */}
             {activeTab === 'chart' && (
               <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
                   <span className="text-sm font-semibold text-white">{sector.etf} · Candlestick Chart</span>
-                  <div className="flex items-center gap-3 text-xs text-slate-500">
-                    <span>1D bars · {activeRange} window</span>
+                  <div className="flex items-center gap-3 text-xs text-slate-500 font-mono">
+                    {isStockIntradayPollRange(activeRange) && (
+                      <span className="text-green-400/60">● {CHART_POLL_MS(activeRange) / 1000}s</span>
+                    )}
+                    <span>
+                      {barKind} · {activeRange}
+                    </span>
                   </div>
                 </div>
                 {candles.length > 0 ? (
@@ -233,8 +267,9 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
                     darkPoolMarkers={darkPoolMarkers}
                     color={sector.color}
                     ticker={sector.etf}
-                    range={activeRange as '1M' | '3M' | '6M' | '1Y'}
+                    range={activeRange}
                     showRSI
+                    indicators={sectorIndicators}
                   />
                 ) : (
                   <div className="h-80 bg-slate-800/30 rounded-xl animate-pulse flex items-center justify-center">

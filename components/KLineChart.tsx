@@ -69,13 +69,13 @@ interface KLineChartProps {
 
 const DEFAULT_INDICATORS: Required<KLineIndicatorFlags> = {
   ema4: false, ema5: false, ema6: false, ema7: false, ema8: false,
-  ema9: false, ema10: false, ema12: false,
+  ema9: true, ema10: false, ema12: false,
   ema15: false, ema20: true, ema21: false, ema26: false,
   ema30: false, ema40: false,
   ema50: true, ema60: false,
   ema100: false,
   ema150: false,
-  ema200: false,
+  ema200: true,
   ema250: false,
   vwap: false,
   bollingerBands: false,
@@ -106,8 +106,10 @@ const EMA_LEGEND_TAILWIND: Record<ChartEmaPeriod, string> = {
 }
 
 function isEmaLineVisible(ind: KLineIndicatorFlags, period: ChartEmaPeriod): boolean {
+  if (period === 9) return ind.ema9 !== false
   if (period === 20) return ind.ema20 !== false
   if (period === 50) return ind.ema50 !== false
+  if (period === 200) return ind.ema200 !== false
   const k = `ema${period}` as keyof KLineIndicatorFlags
   return ind[k] === true
 }

@@ -62,8 +62,11 @@ export const CHART_EMA_COLORS: Record<ChartEmaPeriod, string> = {
   250: '#fb923c',   // orange-400 (1-year round number)
 }
 
-/** Default enabled EMAs when user selects EMA preset. */
-export const DEFAULT_ACTIVE_EMAS: ChartEmaKey[] = ['ema20', 'ema50']
+/** Default enabled EMAs when user selects EMA preset (TradingView-style: 9 / 20 / 50 / 200). */
+export const DEFAULT_ACTIVE_EMAS: ChartEmaKey[] = ['ema9', 'ema20', 'ema50', 'ema200']
+
+/** Same set for stock/sector charts that omit per-line toggles. */
+export const TRADING_DEFAULT_EMA_KEYS: ChartEmaKey[] = ['ema9', 'ema20', 'ema50', 'ema200']
 
 /** EMAs that are always shown regardless of preset (key reference lines). */
 export const ALWAYS_ON_EMAS: ChartEmaKey[] = []
@@ -84,4 +87,11 @@ export function allEmaOn(): Record<ChartEmaKey, boolean> {
   const out: Partial<Record<ChartEmaKey, boolean>> = {}
   for (const p of CHART_EMA_PERIODS) out[chartEmaKey(p)] = true
   return out as Record<ChartEmaKey, boolean>
+}
+
+/** EMA overlay flags for 9 / 20 / 50 / 200 — typical trading-app defaults. */
+export function tradingDefaultEmaFlags(): Record<ChartEmaKey, boolean> {
+  const out = allEmaOff()
+  for (const k of TRADING_DEFAULT_EMA_KEYS) out[k] = true
+  return out
 }

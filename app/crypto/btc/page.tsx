@@ -26,6 +26,9 @@ const COINBASE_WS = 'wss://ws-feed.exchange.coinbase.com'
 const KRAKEN_WS_V2 = 'wss://ws.kraken.com/v2'
 /** Kraken `interval` in minutes; null = no candle WS (e.g. monthly — use REST + poll only). */
 const KRAKEN_OHLC_INTERVAL_MIN: Record<string, number | null> = {
+  /** Kraken WS OHLC supports 1m; 3m is REST-only (aggregated from 1m on server). */
+  '1m': 1,
+  '3m': null,
   '5m': 5,
   '15m': 15,
   '1h': 60,
@@ -36,7 +39,7 @@ const KRAKEN_OHLC_INTERVAL_MIN: Record<string, number | null> = {
 }
 
 const TIMEFRAMES = [
-  ['5m', '5m'], ['15m', '15m'], ['1h', '1H'], ['4h', '4H'],
+  ['1m', '1m'], ['3m', '3m'], ['5m', '5m'], ['15m', '15m'], ['1h', '1H'], ['4h', '4H'],
   ['1d', '1D'], ['1w', '1W'], ['1M', '1M'],
 ] as const
 const INDICATOR_PRESETS = [
@@ -45,6 +48,8 @@ const INDICATOR_PRESETS = [
 
 function coingeckoDaysParam(interval: string): number | 'max' {
   switch (interval) {
+    case '1m':
+    case '3m':
     case '5m':
     case '15m':
       return 1
@@ -93,8 +98,9 @@ async function fetchCoinGeckoCandlesClient(
 
 const defaultEmaSelection = (): Record<ChartEmaKey, boolean> => {
   const out: Partial<Record<ChartEmaKey, boolean>> = {}
+  const on = new Set([9, 20, 50, 200])
   for (const p of CHART_EMA_PERIODS) {
-    out[`ema${p}` as ChartEmaKey] = (p === 20 || p === 50) // default on: 20 & 50
+    out[`ema${p}` as ChartEmaKey] = on.has(p)
   }
   return out as Record<ChartEmaKey, boolean>
 }
@@ -748,7 +754,7 @@ export default function BtcPage() {
 
         <div className="text-center text-[10px] text-slate-700 max-w-3xl mx-auto space-y-1">
           <p>
-            Spot ticker from Coinbase. OHLC from CoinGecko, Kraken REST, or Coinbase candles. Live candles via Kraken WebSocket when a timeframe is supported (monthly uses REST only). Derivatives metrics from Bybit/OKX — not Binance.
+            Spot ticker from Coinbase. OHLC from CoinGecko, Kraken REST, or Coinbase candles. Live candles via Kraken WebSocket for 1m/5m+ (3m uses REST, aggregated from 1m). Monthly uses REST only. Derivatives metrics from Bybit/OKX — not Binance.
           </p>
           <p>Prices are indicative.</p>
         </div>

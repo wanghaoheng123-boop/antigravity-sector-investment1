@@ -10,7 +10,8 @@ import NewsFeed from '@/components/NewsFeed'
 import { getNewsForSector, generateDarkPoolPrints } from '@/lib/mockData'
 import { DarkPoolPrint } from '@/lib/sectors'
 import type { DarkPoolAnalysis } from '@/lib/darkpool'
-import { CHART_EMA_PERIODS, type ChartEmaKey } from '@/lib/chartEma'
+import { CHART_EMA_PERIODS, tradingDefaultEmaFlags, type ChartEmaKey } from '@/lib/chartEma'
+import { STOCK_CHART_RANGES, isStockIntradayPollRange } from '@/lib/chartYahoo'
 
 const KLineChart = dynamic(() => import('@/components/KLineChart'), { ssr: false })
 
@@ -21,8 +22,8 @@ interface DpMarker {
   time: string; price: number; size: number; sentiment: 'BULLISH' | 'BEARISH'
 }
 
-// Intraday ranges — need chart refresh polling
-const INTRADAY_RANGES = new Set(['5m', '15m', '1H', '4H', '1D', '1W'])
+const CHART_POLL_MS = (range: string) =>
+  ['1m', '3m', '5m'].includes(range) ? 30_000 : 60_000
 
 const STOCK_MAIN_TABS = [
   ['chart', 'Chart'],
@@ -92,13 +93,13 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
     fetchChartData(activeRange)
   }, [activeTab, activeRange, fetchChartData])
 
-  // Chart polling for intraday ranges: refresh every 60 seconds
-  // (Yahoo Finance 5m/15m data updates less frequently)
+  // Chart polling — short intervals for 1m/3m/5m so bars stay near live quote
   useEffect(() => {
     if (activeTab !== 'chart') return
-    if (!INTRADAY_RANGES.has(activeRange)) return
+    if (!isStockIntradayPollRange(activeRange)) return
 
-    const poll = setInterval(() => fetchChartData(activeRange), 60_000)
+    const ms = CHART_POLL_MS(activeRange)
+    const poll = setInterval(() => fetchChartData(activeRange), ms)
     return () => clearInterval(poll)
   }, [activeTab, activeRange, fetchChartData])
 
@@ -135,13 +136,10 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
       allEmaOn[k] = true
       allEmaOff[k] = false
     }
-    // EMA preset: enable only 20 and 50 by default
-    const ema20_50: Record<string, boolean> = { ...allEmaOff }
-    ema20_50['ema20'] = true
-    ema20_50['ema50'] = true
+    const emaTrading = tradingDefaultEmaFlags() as Record<string, boolean>
 
     if (activeIndicator === 'all') return { ...allEmaOn, vwap: true, bollingerBands: true, fibonacci: true }
-    if (activeIndicator === 'ema') return { ...ema20_50, vwap: false, bollingerBands: false, fibonacci: false }
+    if (activeIndicator === 'ema') return { ...emaTrading, vwap: false, bollingerBands: false, fibonacci: false }
     if (activeIndicator === 'vwap') return { ...allEmaOff, vwap: true, bollingerBands: false, fibonacci: false }
     if (activeIndicator === 'bb') return { ...allEmaOff, vwap: false, bollingerBands: true, fibonacci: false }
     return { ...allEmaOff, vwap: false, bollingerBands: false, fibonacci: true }
@@ -216,7 +214,7 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
           {activeTab === 'chart' && (
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800">
-                {(['5m', '15m', '1H', '4H', '1D', '1W', '1M', '3M', '6M', '1Y', '2Y', '5Y', 'ALL'] as const).map(r => (
+                {STOCK_CHART_RANGES.map((r) => (
                   <button key={r} onClick={() => setActiveRange(r)}
                     className={`px-2.5 py-1 text-[11px] rounded-md transition-all ${activeRange === r ? 'bg-slate-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}>
                     {r}
@@ -245,8 +243,10 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-semibold text-white">{ticker} · Advanced Technicals</span>
                     <div className="flex items-center gap-3 text-xs text-slate-500 font-mono">
-                      {INTRADAY_RANGES.has(activeRange) && (
-                        <span className="text-green-400/60">● REFRESHES EVERY 60s</span>
+                      {isStockIntradayPollRange(activeRange) && (
+                        <span className="text-green-400/60">
+                          ● REFRESHES EVERY {CHART_POLL_MS(activeRange) / 1000}s
+                        </span>
                       )}
                       <span>{activeRange === '1D' || activeRange === '1W' || activeRange === '5m' || activeRange === '15m' || activeRange === '1H' || activeRange === '4H' ? 'INTRADAY' : 'DAILY+'} BARS</span>
                     </div>
