@@ -37,6 +37,7 @@ interface InstrumentSignal {
   slopePositive: boolean | null
   rsi14: number | null
   atr14: number | null
+  atrPct: number | null
   macdHist: number | null
   bbPctB: number | null
   action: 'BUY' | 'HOLD' | 'SELL'
@@ -69,22 +70,38 @@ function stockSignal(ticker: string, sector: string): InstrumentSignal | null {
   const atrLast = atrVals[atrVals.length - 1]
   const bbPctB = bbVals.pctB[bbVals.pctB.length - 1]
 
+  // ATR as % of price — volatility-normalized for comparison across price levels
+  const atrPct = Number.isFinite(atrLast) && Number.isFinite(price) && price > 0
+    ? (atrLast / price) * 100
+    : NaN
+
   const reg = regimeSignal(price, closes, Number.isFinite(rsi14) ? rsi14 : undefined)
 
+  // Aligned with backtest: RSI < 35, MACD hist > 0, ATR% > 2, BB% < 0.20
   const bullishCount =
-    (Number.isFinite(rsi14) && rsi14 < 40 ? 1 : 0) +
+    (Number.isFinite(rsi14) && rsi14 < 35 ? 1 : 0) +
     (Number.isFinite(macdHist) && macdHist > 0 ? 1 : 0) +
+    (Number.isFinite(atrPct) && atrPct > 2.0 ? 1 : 0) +
     (Number.isFinite(bbPctB) && bbPctB < 0.20 ? 1 : 0)
 
-  const confidence = Math.min(100, reg.confidence + Math.round((bullishCount / 3) * 20))
-
+  // BUY requires ≥2 confirms (matches backtest engine logic)
   let action: 'BUY' | 'HOLD' | 'SELL' = reg.action
-  if (confidence < 60 && action !== 'SELL') action = 'HOLD'
+  if (action === 'BUY' && bullishCount < 2) action = 'HOLD'
+  if (action === 'HOLD' && reg.zone === 'HEALTHY_BULL' && Number.isFinite(rsi14) && rsi14 > 70) {
+    action = 'SELL'
+  }
+
+  const confidence = Math.min(100, reg.confidence + Math.round((bullishCount / 4) * 25))
+
+  // Suppress below threshold (same as backtest: 55%)
+  if (confidence < 55 && action !== 'SELL') action = 'HOLD'
 
   let kelly = 0.10
-  if (action === 'BUY' && reg.dipSignal === 'STRONG_DIP') kelly = 0.25
-  else if (action === 'BUY') kelly = 0.15
-  else if (action === 'SELL') kelly = 1.0
+  if (action === 'BUY') {
+    if (reg.dipSignal === 'STRONG_DIP' && bullishCount >= 3) kelly = 0.25
+    else if (reg.dipSignal === 'STRONG_DIP') kelly = 0.15
+    else kelly = 0.10
+  } else if (action === 'SELL') kelly = 1.0
 
   const colorMap: Record<string, string> = {
     EXTREME_BULL: '#ef4444', EXTENDED_BULL: '#f97316', HEALTHY_BULL: '#22c55e',
@@ -102,6 +119,7 @@ function stockSignal(ticker: string, sector: string): InstrumentSignal | null {
     deviationPct: reg.deviationPct, slopePct: reg.slopePct, slopePositive: reg.slopePositive,
     rsi14: Number.isFinite(rsi14) ? rsi14 : null,
     atr14: Number.isFinite(atrLast) ? atrLast : null,
+    atrPct: Number.isFinite(atrPct) ? atrPct : null,
     macdHist: Number.isFinite(macdHist) ? macdHist : null,
     bbPctB: Number.isFinite(bbPctB) ? bbPctB : null,
     action, confidence, KellyFraction: kelly,
@@ -133,22 +151,36 @@ function btcSignal(): InstrumentSignal | null {
   const atrLast = atrVals[atrVals.length - 1]
   const bbPctB = bbVals.pctB[bbVals.pctB.length - 1]
 
+  // ATR as % of price
+  const atrPct = Number.isFinite(atrLast) && Number.isFinite(price) && price > 0
+    ? (atrLast / price) * 100
+    : NaN
+
   const reg = regimeSignal(price, closes, Number.isFinite(rsi14) ? rsi14 : undefined)
 
+  // Aligned with backtest: RSI < 35, MACD hist > 0, ATR% > 2, BB% < 0.20
   const bullishCount =
-    (Number.isFinite(rsi14) && rsi14 < 40 ? 1 : 0) +
+    (Number.isFinite(rsi14) && rsi14 < 35 ? 1 : 0) +
     (Number.isFinite(macdHist) && macdHist > 0 ? 1 : 0) +
+    (Number.isFinite(atrPct) && atrPct > 2.0 ? 1 : 0) +
     (Number.isFinite(bbPctB) && bbPctB < 0.20 ? 1 : 0)
 
-  const confidence = Math.min(100, reg.confidence + Math.round((bullishCount / 3) * 20))
-
   let action: 'BUY' | 'HOLD' | 'SELL' = reg.action
-  if (confidence < 60 && action !== 'SELL') action = 'HOLD'
+  if (action === 'BUY' && bullishCount < 2) action = 'HOLD'
+  if (action === 'HOLD' && reg.zone === 'HEALTHY_BULL' && Number.isFinite(rsi14) && rsi14 > 70) {
+    action = 'SELL'
+  }
+
+  const confidence = Math.min(100, reg.confidence + Math.round((bullishCount / 4) * 25))
+
+  if (confidence < 55 && action !== 'SELL') action = 'HOLD'
 
   let kelly = 0.10
-  if (action === 'BUY' && reg.dipSignal === 'STRONG_DIP') kelly = 0.25
-  else if (action === 'BUY') kelly = 0.15
-  else if (action === 'SELL') kelly = 1.0
+  if (action === 'BUY') {
+    if (reg.dipSignal === 'STRONG_DIP' && bullishCount >= 3) kelly = 0.25
+    else if (reg.dipSignal === 'STRONG_DIP') kelly = 0.15
+    else kelly = 0.10
+  } else if (action === 'SELL') kelly = 1.0
 
   const colorMap: Record<string, string> = {
     EXTREME_BULL: '#ef4444', EXTENDED_BULL: '#f97316', HEALTHY_BULL: '#22c55e',
@@ -166,6 +198,7 @@ function btcSignal(): InstrumentSignal | null {
     deviationPct: reg.deviationPct, slopePct: reg.slopePct, slopePositive: reg.slopePositive,
     rsi14: Number.isFinite(rsi14) ? rsi14 : null,
     atr14: Number.isFinite(atrLast) ? atrLast : null,
+    atrPct: Number.isFinite(atrPct) ? atrPct : null,
     macdHist: Number.isFinite(macdHist) ? macdHist : null,
     bbPctB: Number.isFinite(bbPctB) ? bbPctB : null,
     action, confidence, KellyFraction: kelly,

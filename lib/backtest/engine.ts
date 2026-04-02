@@ -6,6 +6,13 @@
 import type { OhlcBar } from '@/lib/quant/technicals'
 import { combinedSignal, DEFAULT_CONFIG, atr, type BacktestConfig } from './signals'
 
+// ─── Transaction cost model ─────────────────────────────────────────────────────
+// Applied per trade (entry + exit) to reflect realistic execution costs.
+// Source: Interactive Brokers ~$0.005/share + 0.05% spread + 0.5bps mid-price slippage
+// For a $100 stock: 0.005/100 = 0.005% commission + 0.05% spread + 0.05% slippage ≈ 0.11% total = 11bps round-trip
+export const TX_COST_BPS = 11  // round-trip basis points (applied at entry + exit separately)
+export const TX_COST_PCT = TX_COST_BPS / 10000  // as decimal
+
 export interface OhlcvRow extends OhlcBar {
   time: number
   volume: number
@@ -152,10 +159,13 @@ export function backtestInstrument(
           // Raise stop to break-even
           const trailStopPx = state.openTrade.entryPrice * (1 + 0.005) // just above break-even
           if (price <= trailStopPx) {
+            const proceeds = state.position * price
+            const txCost = proceeds * TX_COST_PCT
+            const netProceeds = proceeds - txCost
             const pnlPct = (price - state.openTrade.entryPrice) / state.openTrade.entryPrice
-            state.capital += state.position * price
             if (pnlPct > 0) { state.tradeWins++; state.grossProfit += pnlPct }
             else { state.tradeLosses++; state.grossLoss += Math.abs(pnlPct) }
+            state.capital += netProceeds
             state.openTrade.exitPrice = price
             state.openTrade.pnlPct = pnlPct
             state.closedTrades.push({ ...state.openTrade })
@@ -168,10 +178,13 @@ export function backtestInstrument(
         if (profitFromEntry >= fourAtrProfit) {
           const lockStopPx = price - atrVal  // lock in 1x ATR profit
           if (price <= lockStopPx) {
+            const proceeds = state.position * price
+            const txCost = proceeds * TX_COST_PCT
+            const netProceeds = proceeds - txCost
             const pnlPct = (price - state.openTrade.entryPrice) / state.openTrade.entryPrice
-            state.capital += state.position * price
             if (pnlPct > 0) { state.tradeWins++; state.grossProfit += pnlPct }
             else { state.tradeLosses++; state.grossLoss += Math.abs(pnlPct) }
+            state.capital += netProceeds
             state.openTrade.exitPrice = price
             state.openTrade.pnlPct = pnlPct
             state.closedTrades.push({ ...state.openTrade })
@@ -185,12 +198,15 @@ export function backtestInstrument(
       // Primary stop-loss check
       if ((state.openTrade.action === 'BUY' && price <= stopPx) ||
           (state.openTrade.action === 'SELL' && price >= stopPx)) {
+        const proceeds = state.position * price
+        const txCost = proceeds * TX_COST_PCT
+        const netProceeds = proceeds - txCost
         const pnlPct = state.openTrade.action === 'BUY'
           ? (price - state.openTrade.entryPrice) / state.openTrade.entryPrice
           : (state.openTrade.entryPrice - price) / state.openTrade.entryPrice
-        state.capital += state.position * price
         if (pnlPct > 0) { state.tradeWins++; state.grossProfit += pnlPct }
         else { state.tradeLosses++; state.grossLoss += Math.abs(pnlPct) }
+        state.capital += netProceeds
         state.openTrade.exitPrice = price
         state.openTrade.pnlPct = pnlPct
         state.closedTrades.push({ ...state.openTrade })
@@ -206,12 +222,15 @@ export function backtestInstrument(
     if (eq > state.peakEquity) state.peakEquity = eq
     const dd = (state.peakEquity - eq) / state.peakEquity
     if (dd >= cfg.maxDrawdownCap && state.openTrade) {
+      const proceeds = state.position * price
+      const txCost = proceeds * TX_COST_PCT
+      const netProceeds = proceeds - txCost
       const pnlPct = state.openTrade.action === 'BUY'
         ? (price - state.openTrade.entryPrice) / state.openTrade.entryPrice
         : (state.openTrade.entryPrice - price) / state.openTrade.entryPrice
-      state.capital += state.position * price
       if (pnlPct > 0) { state.tradeWins++; state.grossProfit += pnlPct }
       else { state.tradeLosses++; state.grossLoss += Math.abs(pnlPct) }
+      state.capital += netProceeds
       state.openTrade.exitPrice = price
       state.openTrade.pnlPct = pnlPct
       state.closedTrades.push({ ...state.openTrade })
@@ -231,7 +250,9 @@ export function backtestInstrument(
         state.equityHistory.push(currentEquity(state))
         continue
       }
-      state.capital -= shares * price
+      const entryCost = shares * price
+      const txCost = entryCost * TX_COST_PCT
+      state.capital -= (entryCost + txCost)  // buy + transaction cost
       state.position += shares
       state.avgCost = price
       state.openTrade = {
@@ -239,7 +260,7 @@ export function backtestInstrument(
         action: 'BUY',
         entryPrice: price,
         exitPrice: 0,
-        shares, value: shares * price,
+        shares, value: entryCost,
         regime: signal.regime.label, dipSignal: signal.regime.dipSignal,
         confidence: signal.confidence, pnlPct: null, reason: signal.reason,
         atrAtrPctAtEntry: Number.isFinite(atrVals[i]) ? (atrVals[i] / price) * 100 : 0.10,
@@ -251,10 +272,13 @@ export function backtestInstrument(
 
     } else if (signal.action === 'SELL' && state.openTrade) {
       const proceeds = state.position * price
+      const txCost = proceeds * TX_COST_PCT  // exit commission
+      const netProceeds = proceeds - txCost
+      // PnL% = gross return before transaction costs (used for strategy classification)
       const pnlPct = (price - state.openTrade.entryPrice) / state.openTrade.entryPrice
       if (pnlPct > 0) { state.tradeWins++; state.grossProfit += pnlPct }
       else { state.tradeLosses++; state.grossLoss += Math.abs(pnlPct) }
-      state.capital += proceeds
+      state.capital += netProceeds
       state.openTrade.exitPrice = price
       state.openTrade.pnlPct = pnlPct
       state.closedTrades.push({ ...state.openTrade })
@@ -269,10 +293,13 @@ export function backtestInstrument(
   // ── Close remaining open position at final price ──
   const finalPrice = rows[rows.length - 1].close
   if (state.openTrade) {
+    const proceeds = state.position * finalPrice
+    const txCost = proceeds * TX_COST_PCT
+    const netProceeds = proceeds - txCost
     const pnlPct = (finalPrice - state.openTrade.entryPrice) / state.openTrade.entryPrice
     if (pnlPct > 0) { state.tradeWins++; state.grossProfit += pnlPct }
     else { state.tradeLosses++; state.grossLoss += Math.abs(pnlPct) }
-    state.capital += state.position * finalPrice
+    state.capital += netProceeds
     state.openTrade.exitPrice = finalPrice
     state.openTrade.pnlPct = pnlPct
     state.closedTrades.push({ ...state.openTrade })
@@ -401,30 +428,47 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
   const avgAnnReturn = results.reduce((s, r) => s + r.annualizedReturn, 0) / Math.max(results.length, 1)
   const bnhAvg = results.reduce((s, r) => s + r.bnhReturn, 0) / Math.max(results.length, 1)
 
-  // Aggregate all daily returns across instruments for portfolio-level Sharpe/Sortino
-  const allDailyReturns: number[] = []
-  for (const r of results) {
-    for (const d of r.dailyReturns) {
-      if (Number.isFinite(d)) allDailyReturns.push(d)
-    }
-  }
+  // ── Portfolio-level Sharpe/Sortino from combined equity curve ─────────────────
+  // Build a proper combined equity curve: sum of all instruments' equity at each date.
+  // Only use the common date range (minimum length across instruments) to avoid
+  // look-ahead bias from staggered data.
+  const commonLen = results.length > 0
+    ? Math.min(...results.map(r => r.equityCurve.length))
+    : 0
 
   let sharpe: number | null = null
   let sortino: number | null = null
-  if (allDailyReturns.length > 30) {
-    const mean = allDailyReturns.reduce((a, b) => a + b, 0) / allDailyReturns.length
-    const variance = allDailyReturns.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, allDailyReturns.length - 1)
-    const sd = Math.sqrt(Math.max(variance, 0))
-    if (sd > 1e-10) {
-      const rfD = 0.04 / 252
-      sharpe = ((mean - rfD) / sd) * Math.sqrt(252)
+  if (commonLen > 30) {
+    // Build combined equity: sum of normalized equity (each starts at initialCapital)
+    const combinedEquity: number[] = []
+    for (let i = 0; i < commonLen; i++) {
+      let total = 0
+      for (const r of results) {
+        total += r.equityCurve[i]
+      }
+      combinedEquity.push(total)
     }
-    const negReturns = allDailyReturns.filter(x => x < 0)
-    if (negReturns.length > 0) {
-      const dsd = Math.sqrt(negReturns.reduce((s, x) => s + x * x, 0) / negReturns.length)
-      if (dsd > 1e-10) {
+    // Compute daily returns from combined equity
+    const portfolioDailyReturns: number[] = []
+    for (let i = 1; i < combinedEquity.length; i++) {
+      const ret = (combinedEquity[i] - combinedEquity[i - 1]) / combinedEquity[i - 1]
+      if (Number.isFinite(ret)) portfolioDailyReturns.push(ret)
+    }
+    if (portfolioDailyReturns.length > 30) {
+      const mean = portfolioDailyReturns.reduce((a, b) => a + b, 0) / portfolioDailyReturns.length
+      const variance = portfolioDailyReturns.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, portfolioDailyReturns.length - 1)
+      const sd = Math.sqrt(Math.max(variance, 0))
+      if (sd > 1e-10) {
         const rfD = 0.04 / 252
-        sortino = ((mean - rfD) / dsd) * Math.sqrt(252)
+        sharpe = ((mean - rfD) / sd) * Math.sqrt(252)
+      }
+      const negReturns = portfolioDailyReturns.filter(x => x < 0)
+      if (negReturns.length > 0) {
+        const dsd = Math.sqrt(negReturns.reduce((s, x) => s + x * x, 0) / negReturns.length)
+        if (dsd > 1e-10) {
+          const rfD = 0.04 / 252
+          sortino = ((mean - rfD) / dsd) * Math.sqrt(252)
+        }
       }
     }
   }
@@ -447,4 +491,109 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
     initialCapital,
     finalCapital,
   }
+}
+
+// ─── Walk-Forward Analysis ──────────────────────────────────────────────────────
+// Splits data into N in-sample (training) and out-of-sample (testing) windows.
+// This is the gold standard for detecting overfitting: if IS ≫ OOS, the strategy
+// is likely curve-fit. Robust strategies show similar metrics in both periods.
+
+export interface WFWWindow {
+  periodLabel: string
+  startDate: string
+  endDate: string
+  isReturn: number      // in-sample annualized return
+  isSharpe: number | null
+  osReturn: number      // out-of-sample annualized return
+  osSharpe: number | null
+  oosRatio: number      // OOS/IS ratio (1.0 = perfect out-of-sample, <0.5 = overfit suspicion)
+}
+
+function annualized(totalReturn: number, days: number): number {
+  const years = days / 252
+  return years > 0 ? ((1 + totalReturn) ** (1 / years) - 1) : 0
+}
+
+function windowSharpe(dailyReturns: number[]): number | null {
+  if (dailyReturns.length < 30) return null
+  const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length
+  const variance = dailyReturns.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, dailyReturns.length - 1)
+  const sd = Math.sqrt(Math.max(variance, 0))
+  if (sd < 1e-10) return null
+  const rfD = 0.04 / 252
+  return ((mean - rfD) / sd) * Math.sqrt(252)
+}
+
+export function walkForwardAnalysis(
+  ticker: string,
+  sector: string,
+  rows: OhlcvRow[],
+  trainDays = 252,
+  testDays = 63,
+): WFWWindow[] {
+  // trainDays = 1 year in-sample, testDays = 1 quarter out-of-sample
+  const windows: WFWWindow[] = []
+  const n = rows.length
+  let trainStart = 0
+
+  while (trainStart + trainDays + testDays <= n) {
+    const trainEnd = trainStart + trainDays
+    const testEnd = trainEnd + testDays
+
+    const trainRows = rows.slice(trainStart, trainEnd)
+    const testRows = rows.slice(trainEnd, testEnd)
+
+    if (trainRows.length < 100 || testRows.length < 20) break
+
+    const trainResult = backtestInstrument(ticker, sector, trainRows)
+    const testResult = backtestInstrument(ticker, sector, testRows)
+
+    const isAnn = annualized(trainResult.totalReturn, trainRows.length)
+    const osAnn = annualized(testResult.totalReturn, testRows.length)
+    const isSharpe = windowSharpe(trainResult.dailyReturns)
+    const osSharpe = windowSharpe(testResult.dailyReturns)
+    const oosRatio = isAnn !== 0 ? Math.min(2, Math.max(-1, osAnn / isAnn)) : 0
+
+    windows.push({
+      periodLabel: `${new Date(trainRows[0].time * 1000).toISOString().slice(0, 7)} – ${new Date(testRows[testRows.length - 1].time * 1000).toISOString().slice(0, 7)}`,
+      startDate: new Date(trainRows[0].time * 1000).toISOString().split('T')[0],
+      endDate: new Date(testRows[testRows.length - 1].time * 1000).toISOString().split('T')[0],
+      isReturn: isAnn,
+      isSharpe,
+      osReturn: osAnn,
+      osSharpe,
+      oosRatio,
+    })
+
+    trainStart += testDays
+  }
+
+  return windows
+}
+
+export interface WalkForwardSummary {
+  avgIsReturn: number
+  avgOsReturn: number
+  avgIsSharpe: number | null
+  avgOsSharpe: number | null
+  avgOosRatio: number
+  overfittingIndex: number   // 0 = perfectly robust, 1 = fully overfit (IS ≫ OS)
+  windows: WFWWindow[]
+}
+
+export function walkForwardSummary(windows: WFWWindow[]): WalkForwardSummary {
+  if (windows.length === 0) {
+    return { avgIsReturn: 0, avgOsReturn: 0, avgIsSharpe: null, avgOsSharpe: null, avgOosRatio: 0, overfittingIndex: 1, windows }
+  }
+  const avgIsReturn = windows.reduce((s, w) => s + w.isReturn, 0) / windows.length
+  const avgOsReturn = windows.reduce((s, w) => s + w.osReturn, 0) / windows.length
+  const avgIsSharpe = windows.reduce((s, w) => s + (w.isSharpe ?? 0), 0) / windows.length
+  const avgOsSharpe = windows.reduce((s, w) => s + (w.osSharpe ?? 0), 0) / windows.length
+  const avgOosRatio = windows.reduce((s, w) => s + w.oosRatio, 0) / windows.length
+  // overfittingIndex: 0 = IS ≈ OS, > 0.5 = suspicious overfitting
+  const overfittingIndex = avgIsReturn > 0
+    ? Math.max(0, Math.min(1, (avgIsReturn - avgOsReturn) / (Math.abs(avgIsReturn) + 0.001)))
+    : 0
+
+  return { avgIsReturn, avgOsReturn, avgIsSharpe: Number.isFinite(avgIsSharpe) ? avgIsSharpe : null, avgOsSharpe: Number.isFinite(avgOsSharpe) ? avgOsSharpe : null, avgOosRatio, overfittingIndex, windows }
 }
