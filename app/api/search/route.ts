@@ -53,8 +53,8 @@ async function resolveDirectQuote(raw: string) {
   const symbol = looksLikeTickerToken(raw)
   if (!symbol) return null
   try {
-    const raw = await yahooFinance.quote(symbol)
-    const q = (Array.isArray(raw) ? raw[0] : raw) as {
+    const quoteResult = await yahooFinance.quote(symbol)
+    const q = (Array.isArray(quoteResult) ? quoteResult[0] : quoteResult) as {
       symbol?: string
       shortName?: string
       longName?: string

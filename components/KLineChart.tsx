@@ -639,7 +639,7 @@ export default function KLineChart({
         /* ignore */
       }
     }
-  }, [candles, darkPoolMarkers, newsMarkers, showRSI, indicators, vis, chartReadyGen])
+  }, [candles, darkPoolMarkers, newsMarkers, showRSI, indicatorsProp, vis, chartReadyGen])
 
   const toggleIndicator = useCallback((key: VisKey) => {
     setVis((prev) => {

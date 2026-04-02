@@ -13,11 +13,11 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   )
 }
 
-if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
+if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
   providers.push(
     GitHubProvider({
-      clientId: process.env.GITHUB_ID,
-      clientSecret: process.env.GITHUB_SECRET,
+      clientId: process.env.GITHUB_CLIENT_ID,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET,
     })
   )
 }
@@ -26,12 +26,26 @@ if (process.env.GITHUB_ID && process.env.GITHUB_SECRET) {
 // via NextAuth's own validation when the placeholder is used in production.
 function getSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET
-  if (secret) return secret
-
-  // Placeholder — will cause NextAuth to throw at request time with:
-  // "Error: Encryption secret is too short. You need to use a secret that is...
-  // This is intentional: build passes, production usage fails clearly.
-  return 'NOT-CONFIGURED-PLACEHOLDER-REPLACE-WITH-REAL-SECRET'
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '[QUANTAN] NEXTAUTH_SECRET is not set. ' +
+        'Generate one with: openssl rand -base64 32. ' +
+        'Set it in Vercel → Project → Settings → Environment Variables.'
+      )
+    }
+    return 'NOT-CONFIGURED-PLACEHOLDER-REPLACE-WITH-REAL-SECRET'
+  }
+  if (secret === 'NOT-CONFIGURED-PLACEHOLDER-REPLACE-WITH-REAL-SECRET') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error(
+        '[QUANTAN] NEXTAUTH_SECRET is still the placeholder value. ' +
+        'Generate a real secret with: openssl rand -base64 32. ' +
+        'Set it in Vercel → Project → Settings → Environment Variables.'
+      )
+    }
+  }
+  return secret
 }
 
 export function getAuthOptions(): NextAuthOptions {

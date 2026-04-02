@@ -295,6 +295,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
+
   // ── Primary: CoinGecko (globally accessible, no geo-blocking) ───────────────
   const cg = await fetchCoinGeckoOhlc(binanceInterval, limit)
   if (cg?.length) {

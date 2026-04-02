@@ -13,7 +13,7 @@ export default async function SignInPage() {
   if (session) redirect('/')
 
   const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET)
-  const hasGitHub = Boolean(process.env.GITHUB_ID && process.env.GITHUB_SECRET)
+  const hasGitHub = Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET)
   const hasSecret = Boolean(process.env.NEXTAUTH_SECRET)
   const baseUrl = process.env.NEXTAUTH_URL || 'https://your-deployment.vercel.app'
 

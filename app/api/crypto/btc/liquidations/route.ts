@@ -13,6 +13,7 @@ type OkxLiqRow = {
     side?: string
     posSide?: string
     time?: string
+    ts?: string
   }>
 }
 
