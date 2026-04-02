@@ -231,13 +231,13 @@ export default function BacktestPage() {
             label="Portfolio Return"
             value={fmtPct(portfolio.avgReturn)}
             sub={`Ann: ${fmtPct(portfolio.avgAnnReturn)}`}
-            color={portfolio.avgReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}
+            color={portfolio.avgReturn >= 0 ? 'var(--color-up)' : 'var(--color-down)'}
           />
           <MetricCard
             label="Alpha vs B&H"
             value={fmtPct(portfolio.alpha)}
             sub={`B&H avg: ${fmtPct(portfolio.bnhAvg)}`}
-            color={portfolio.alpha > 0 ? 'text-cyan-400' : 'text-orange-400'}
+            color={portfolio.alpha > 0 ? 'var(--color-accent-cyan)' : '#f97316'}
           />
           <MetricCard
             label="Sharpe Ratio"
@@ -398,7 +398,7 @@ function AnalysisTab({ results, sectorColors }: { results: BacktestResult[]; sec
                   </td>
                   <td className="px-4 py-3 font-mono text-slate-400">{row.avgTrades}</td>
                   <td className="px-4 py-3 font-mono text-cyan-400">
-                    {i === 0 ? '🏆 Top' : i === sectorRows.length - 1 ? '📉 Bot' : '—'}
+                    {i === 0 ? 'TOP' : i === sectorRows.length - 1 ? 'BOT' : '—'}
                   </td>
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-0.5 rounded font-bold ${i < 3 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-slate-800 text-slate-500'}`}>
@@ -639,23 +639,23 @@ function LiveSignalsPanel() {
   const totalSectors = new Set(rawInsts.map(i => i.sector as string)).size
 
   let marketRegimeLabel = 'NEUTRAL'
-  let regimeEmoji = '⚖️'
+  let regimeIcon = 'NEUTRAL'
   let regimeColor = 'text-slate-400'
   let regimeDesc = ''
 
   if (buyPct !== '0' && Number(buyPct) > 40) {
     marketRegimeLabel = 'BULL REGIME'
-    regimeEmoji = '🟢'
+    regimeIcon = 'BULL'
     regimeColor = 'text-emerald-400'
     regimeDesc = `${sectorWithBuy}/${totalSectors} sectors showing BUY signals — selective buying in corrections.`
   } else if (sellCount > buyCount * 2) {
     marketRegimeLabel = 'BEAR REGIME'
-    regimeEmoji = '🔴'
+    regimeIcon = 'BEAR'
     regimeColor = 'text-red-400'
     regimeDesc = `Broad weakness: ${sellCount} instruments in sell regime. Risk-off environment.`
   } else if (holdCount > total * 0.7) {
     marketRegimeLabel = 'PAUSE / DISTRIBUTION'
-    regimeEmoji = '⚠️'
+    regimeIcon = 'HOLD'
     regimeColor = 'text-amber-400'
     regimeDesc = `Market in digestion phase — ${holdCount} instruments on hold. Awaiting setups.`
   } else {
@@ -718,7 +718,7 @@ function LiveSignalsPanel() {
         {/* Market regime badge */}
         <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4">
           <div className="flex items-center gap-2 mb-2">
-            <span className="text-2xl">{regimeEmoji}</span>
+            <span className={`text-xs font-bold px-2 py-1 rounded ${regimeColor} bg-current/10 border border-current/20`}>{regimeIcon}</span>
             <span className={`text-lg font-bold ${regimeColor}`}>{marketRegimeLabel}</span>
           </div>
           <p className="text-xs text-slate-400 leading-relaxed">{regimeDesc}</p>
@@ -837,7 +837,7 @@ function LiveSignalsPanel() {
                     {(inst.deviationPct as number) != null ? `${(inst.deviationPct as number) >= 0 ? '+' : ''}${(inst.deviationPct as number).toFixed(1)}%` : '—'}
                   </td>
                   <td className={`px-3 py-2 font-mono ${(inst.slopePct as number) != null && (inst.slopePct as number) > 0 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                    {(inst.slopePct as number) != null ? `${(inst.slopePct as number) >= 0 ? '+' : ''}${(inst.slopePct as number * 100).toFixed(4)}` : '—'}
+                    {(inst.slopePct as number) != null ? `${(inst.slopePct as number) >= 0 ? '+' : ''}${(inst.slopePct as number * 100).toFixed(4)}%` : '—'}
                   </td>
                   <td className="px-3 py-2 font-mono text-slate-400">{((inst.KellyFraction as number) * 100).toFixed(0)}%</td>
                   <td className="px-3 py-2 font-mono text-slate-600 text-[10px]">{inst.lastDate as string ?? '—'}</td>
