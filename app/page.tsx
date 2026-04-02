@@ -119,6 +119,28 @@ export default function HomePage() {
           </p>
         </div>
 
+        {/* Backtest CTA */}
+        <section className="bg-gradient-to-r from-cyan-950/60 via-slate-900/80 to-cyan-950/40 rounded-2xl border border-cyan-800/30 p-6">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded">NEW</span>
+                <h2 className="text-lg font-bold text-white">Institutional Backtest Dashboard</h2>
+              </div>
+              <p className="text-sm text-slate-400 max-w-lg">
+                5Y walk-forward backtest across all 11 sectors (55 stocks) + BTC. 200EMA deviation regime strategy with RSI/MACD/ATR/BB confirmations, Half-Kelly position sizing, and 10% stop-loss.
+              </p>
+            </div>
+            <Link
+              href="/backtest"
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white text-sm font-semibold rounded-xl transition-colors shadow-lg shadow-cyan-900/30"
+            >
+              <span>View Backtest</span>
+              <span>→</span>
+            </Link>
+          </div>
+        </section>
+
         {/* Top Signals */}
         <section>
           <div className="flex items-center justify-between mb-5">

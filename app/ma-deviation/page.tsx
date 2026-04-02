@@ -11,6 +11,7 @@ interface MA200Regime {
   zone: string
   deviationPct: number | null
   slopePositive: boolean | null
+  slopePct: number | null       // raw numeric slope, e.g. 0.00087 = +0.087%/bar
   label: string
   color: string
   riskLevel: 'low' | 'medium' | 'high' | 'extreme'
@@ -96,11 +97,12 @@ function DeviationBar({ pct, color }: { pct: number; color: string }) {
   )
 }
 
-function SlopeChip({ positive }: { positive: boolean | null }) {
+function SlopeChip({ positive, slopePct }: { positive: boolean | null; slopePct?: number | null }) {
   if (positive === null) return <span className="text-slate-600 text-xs">—</span>
+  const pct = slopePct != null ? `${slopePct > 0 ? '+' : ''}${(slopePct * 100).toFixed(3)}%` : null
   return (
     <span className={`inline-flex items-center gap-0.5 text-[10px] font-mono px-1.5 py-0.5 rounded ${positive ? 'text-emerald-400 bg-emerald-500/10' : 'text-red-400 bg-red-500/10'}`}>
-      {positive ? '▲' : '▼'} {positive ? 'Rising' : 'Declining'}
+      {positive ? '▲' : '▼'} {positive ? 'Rising' : 'Declining'}{pct ? ` ${pct}` : ''}
     </span>
   )
 }
@@ -361,7 +363,7 @@ export default function MADeviationPage() {
                   </div>
 
                   {/* Slope */}
-                  <SlopeChip positive={regime?.slopePositive ?? null} />
+                  <SlopeChip positive={regime?.slopePositive ?? null} slopePct={regime?.slopePct ?? null} />
 
                   {/* Dip Signal badge */}
                   <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[11px] font-medium ${cfg.badgeClass} w-fit`}>
@@ -405,7 +407,9 @@ export default function MADeviationPage() {
                           { label: 'Deviation', value: devPct != null ? `${devPct >= 0 ? '+' : ''}${devPct.toFixed(2)}%` : '—', color: regime.color },
                           { label: 'RSI(14)', value: row.rsi14 != null ? row.rsi14.toFixed(1) : '—' },
                           { label: 'Trading Days', value: String(row.tradingDays) },
-                          { label: '200MA Slope', value: regime.slopePositive === true ? '▲ Rising' : regime.slopePositive === false ? '▼ Declining' : '—', color: regime.slopePositive === true ? '#22c55e' : regime.slopePositive === false ? '#ef4444' : undefined },
+                          { label: '200MA Slope', value: regime.slopePct != null
+                              ? `${regime.slopePct > 0 ? '+' : ''}${(regime.slopePct * 100).toFixed(4)}% (${regime.slopePositive ? '▲' : '▼'})`
+                              : '—', color: regime.slopePct != null ? (regime.slopePct > 0 ? '#22c55e' : '#ef4444') : undefined },
                           { label: 'Risk Level', value: regime.riskLevel.toUpperCase() },
                         ].map(({ label, value, color }) => (
                           <div key={label} className="bg-slate-800/50 rounded-lg px-3 py-2">

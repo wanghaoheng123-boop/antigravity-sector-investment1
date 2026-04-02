@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
   BtcCandle,
   calcRSI,
@@ -91,24 +91,70 @@ export default function BtcQuantLab({ candles }: Props) {
   const [metrics, setMetrics] = useState<MetricsData | null>(null)
   const [liq, setLiq] = useState<LiqData | null>(null)
   const [activeMetricTab, setActiveMetricTab] = useState<'funding' | 'liquidations' | 'signals'>('funding')
-  const [loading, setLoading] = useState(false)
   const [derivativesError, setDerivativesError] = useState<string | null>(null)
+  const [metricsLoading, setMetricsLoading] = useState(false)
+  const [liqLoading, setLiqLoading] = useState(false)
+  const [metricsFetchedAt, setMetricsFetchedAt] = useState<string | null>(null)
+  const [liqFetchedAt, setLiqFetchedAt] = useState<string | null>(null)
 
-  useEffect(() => {
-    setLoading(true)
-    setDerivativesError(null)
-    ;(async () => {
-      const [mr, lr] = await Promise.all([fetchJsonSafe('/api/crypto/btc/metrics'), fetchJsonSafe('/api/crypto/btc/liquidations')])
-      if (mr.ok) setMetrics(mr.data as MetricsData)
-      if (lr.ok) setLiq(lr.data as LiqData)
-      const errs: string[] = []
-      if (!mr.ok) errs.push(`metrics: ${mr.message}`)
-      if (!lr.ok) errs.push(`liquidations: ${lr.message}`)
-      if (errs.length) setDerivativesError(errs.join(' · '))
-    })()
-      .catch((e) => console.error('[BtcQuantLab]', e))
-      .finally(() => setLoading(false))
+  const fetchMetrics = useCallback(async () => {
+    setMetricsLoading(true)
+    setDerivativesError((prev) => prev && !prev.includes('metrics') ? prev : null)
+    try {
+      const mr = await fetchJsonSafe('/api/crypto/btc/metrics')
+      if (mr.ok) {
+        setMetrics(mr.data as MetricsData)
+        setMetricsFetchedAt(new Date().toLocaleTimeString())
+      } else {
+        setDerivativesError((prev) => {
+          const base = prev ? `${prev} · ` : ''
+          return `${base}metrics: ${mr.message}`
+        })
+      }
+    } catch (e) {
+      console.error('[BtcQuantLab] metrics', e)
+    } finally {
+      setMetricsLoading(false)
+    }
   }, [])
+
+  const fetchLiq = useCallback(async () => {
+    setLiqLoading(true)
+    try {
+      const lr = await fetchJsonSafe('/api/crypto/btc/liquidations')
+      if (lr.ok) {
+        setLiq(lr.data as LiqData)
+        setLiqFetchedAt(new Date().toLocaleTimeString())
+      } else {
+        setDerivativesError((prev) => {
+          const base = prev ? `${prev} · ` : ''
+          return `${base}liquidations: ${lr.message}`
+        })
+      }
+    } catch (e) {
+      console.error('[BtcQuantLab] liq', e)
+    } finally {
+      setLiqLoading(false)
+    }
+  }, [])
+
+  // Initial load
+  useEffect(() => {
+    void fetchMetrics()
+    void fetchLiq()
+  }, [fetchMetrics, fetchLiq])
+
+  // Poll metrics every 30 seconds
+  useEffect(() => {
+    const id = setInterval(() => { void fetchMetrics() }, 30_000)
+    return () => clearInterval(id)
+  }, [fetchMetrics])
+
+  // Poll liquidations every 60 seconds
+  useEffect(() => {
+    const id = setInterval(() => { void fetchLiq() }, 60_000)
+    return () => clearInterval(id)
+  }, [fetchLiq])
 
   const closes = candles.map(c => c.close)
   const latestClose = closes[closes.length - 1] ?? 0
@@ -262,7 +308,7 @@ export default function BtcQuantLab({ candles }: Props) {
   return (
     <div className="space-y-6">
       <p className="text-[11px] text-slate-500 border border-slate-800 rounded-lg px-3 py-2 bg-slate-900/40">
-        <span className="text-emerald-400/90 font-semibold">Live quant</span> — RSI, MACD, EMA, Bollinger, VWAP, ATR(14), Stochastic(14,3,3), 200MA regime recalculated in your browser from the loaded candle series ({candles.length} bars). Derivatives (funding, OI, liquidations) require exchange APIs and may be empty when geo-blocked.
+        <span className="text-emerald-400/90 font-semibold">Live quant</span> — RSI, MACD, EMA, Bollinger, VWAP, ATR(14), Stochastic(14,3,3), 200MA regime recalculated in your browser from the loaded candle series ({candles.length} bars). Derivatives (funding, OI) refresh every 30s; liquidations every 60s. Exchange APIs may be empty when geo-blocked.
       </p>
       {derivativesError && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/90">
@@ -316,39 +362,43 @@ export default function BtcQuantLab({ candles }: Props) {
             />
             <MetricCard
               label="Data Source"
-              value={metrics?.source?.includes('Unavailable') ? 'Unavailable' : (metrics?.source ?? '—')}
-              sub={metrics?.fetchedAt ? `Updated ${new Date(metrics.fetchedAt).toLocaleTimeString()}` : undefined}
+              value={metricsLoading ? 'Refreshing…' : metrics?.source?.includes('Unavailable') ? 'Unavailable' : (metrics?.source ?? '—')}
+              sub={metricsFetchedAt ? `Updated ${metricsFetchedAt}` : undefined}
               color="text-slate-500"
             />
           </div>
         )}
 
         {activeMetricTab === 'liquidations' && (
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <MetricCard
-              label="Large Trades (24h)"
-              value={String(liq?.totalLiquidations ?? '—')}
-              sub=">$100k notional"
-              color="text-amber-400"
-            />
-            <MetricCard
-              label="Buy (Long Liq)"
-              value={liq?.buyVolume != null ? `$${(liq.buyVolume / 1e6).toFixed(1)}M` : '—'}
-              sub={`${liq?.buyLiquidations ?? 0} trades`}
-              color="text-red-400"
-            />
-            <MetricCard
-              label="Sell (Short Liq)"
-              value={liq?.sellVolume != null ? `$${(liq.sellVolume / 1e6).toFixed(1)}M` : '—'}
-              sub={`${liq?.sellLiquidations ?? 0} trades`}
-              color="text-green-400"
-            />
-            <MetricCard
-              label="Net Bias"
-              value={liq?.netDirection ?? '—'}
-              sub="24h liquidation direction"
-              color={liq?.netDirection === 'LONG_BIAS' ? 'text-red-400' : liq?.netDirection === 'SHORT_BIAS' ? 'text-green-400' : 'text-slate-400'}
-            />
+          <div>
+            {liqLoading && <div className="text-[10px] text-slate-600 mb-2">Refreshing liquidations data…</div>}
+            {liqFetchedAt && <div className="text-[10px] text-slate-600 mb-2">Last updated: {liqFetchedAt}</div>}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <MetricCard
+                label="Large Trades (24h)"
+                value={String(liq?.totalLiquidations ?? '—')}
+                sub=">$100k notional"
+                color="text-amber-400"
+              />
+              <MetricCard
+                label="Buy (Long Liq)"
+                value={liq?.buyVolume != null ? `$${(liq.buyVolume / 1e6).toFixed(1)}M` : '—'}
+                sub={`${liq?.buyLiquidations ?? 0} trades`}
+                color="text-red-400"
+              />
+              <MetricCard
+                label="Sell (Short Liq)"
+                value={liq?.sellVolume != null ? `$${(liq.sellVolume / 1e6).toFixed(1)}M` : '—'}
+                sub={`${liq?.sellLiquidations ?? 0} trades`}
+                color="text-green-400"
+              />
+              <MetricCard
+                label="Net Bias"
+                value={liq?.netDirection ?? '—'}
+                sub="24h liquidation direction"
+                color={liq?.netDirection === 'LONG_BIAS' ? 'text-red-400' : liq?.netDirection === 'SHORT_BIAS' ? 'text-green-400' : 'text-slate-400'}
+              />
+            </div>
           </div>
         )}
 
@@ -409,7 +459,12 @@ export default function BtcQuantLab({ candles }: Props) {
                       {ma200 != null ? `200DMA: $${ma200.toLocaleString('en-US', { maximumFractionDigits: 0 })}` : ''}
                       {regime.deviationPct != null ? ` · Deviation: ${regime.deviationPct > 0 ? '+' : ''}${regime.deviationPct.toFixed(1)}%` : ''}
                       {regime.slopePositive !== null && (
-                        <span className="ml-2">{regime.slopePositive ? '↗ 200DMA rising' : '↘ 200DMA falling'}</span>
+                        <span className="ml-2">
+                          {regime.slopePositive ? '↗' : '↘'} 200DMA {regime.slopePositive ? 'rising' : 'falling'}
+                          {regime.slopePct != null
+                            ? ` (${regime.slopePct > 0 ? '+' : ''}${(regime.slopePct * 100).toFixed(4)}%/bar)`
+                            : ''}
+                        </span>
                       )}
                     </div>
                   </div>

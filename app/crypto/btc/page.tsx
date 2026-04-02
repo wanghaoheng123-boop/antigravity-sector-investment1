@@ -505,7 +505,7 @@ export default function BtcPage() {
         /* ignore */
       }
     }
-    const t = setTimeout(loadRestQuote, 4000)
+    const t = setTimeout(loadRestQuote, 2000)
     const iv = setInterval(loadRestQuote, 60_000)
     return () => {
       clearTimeout(t)
@@ -550,14 +550,17 @@ export default function BtcPage() {
     }
   }, [activeTab, activeRange, fetchCandles, connectKlineWs])
 
-  /** Refresh OHLC on an interval when geo-blocking breaks kline WSS (REST chain still works). */
+  /** Refresh OHLC on an interval when geo-blocking breaks kline WSS (REST chain still works).
+   *  3m has no native WebSocket → poll every 30s.
+   *  All other intervals: every 75s. */
   useEffect(() => {
     if (activeTab !== 'chart') return
+    const pollMs = activeRange === '3m' ? 30_000 : 75_000
     const id = setInterval(() => {
       fetchCandles(activeRangeRef.current)
-    }, 75_000)
+    }, pollMs)
     return () => clearInterval(id)
-  }, [activeTab, fetchCandles])
+  }, [activeTab, activeRange, fetchCandles])
 
   useEffect(() => {
     return () => {
@@ -708,6 +711,11 @@ export default function BtcPage() {
               <div className="flex items-center gap-3 text-xs text-slate-500 font-mono">
                 <span>{activeRange.toUpperCase()} BARS</span>
                 <span>{candles.length} candles</span>
+                {activeRange === '1M' && (
+                  <span className="text-[10px] text-amber-400/80 border border-amber-400/30 px-1.5 py-0.5 rounded bg-amber-950/20">
+                    ⚠ Synthesized from daily bars (not native monthly OHLC)
+                  </span>
+                )}
               </div>
             </div>
             {restFallbackNote && !fetchError && (

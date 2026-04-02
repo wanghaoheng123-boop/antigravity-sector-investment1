@@ -103,6 +103,7 @@ type Payload = {
     zone: string
     deviationPct: number | null
     slopePositive: boolean | null
+    slopePct: number | null       // raw numeric slope, e.g. 0.00087 = +0.087%/bar
     label: string
     color: string
     riskLevel: 'low' | 'medium' | 'high' | 'extreme'
@@ -805,11 +806,13 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                   </div>
                   <div>
                     <span className="uppercase tracking-wide mr-1">200MA slope: </span>
-                    {data.ma200Regime.slopePositive === true
-                      ? '↗ Rising'
-                      : data.ma200Regime.slopePositive === false
-                        ? '↘ Declining'
-                        : '—'}
+                    {data.ma200Regime.slopePct != null
+                      ? `${data.ma200Regime.slopePct > 0 ? '↗' : '↘'} ${data.ma200Regime.slopePositive ? 'Rising' : 'Declining'} (${data.ma200Regime.slopePct > 0 ? '+' : ''}${(data.ma200Regime.slopePct * 100).toFixed(4)}%/bar)`
+                      : data.ma200Regime.slopePositive === true
+                        ? '↗ Rising'
+                        : data.ma200Regime.slopePositive === false
+                          ? '↘ Declining'
+                          : '—'}
                   </div>
                 </div>
               </div>

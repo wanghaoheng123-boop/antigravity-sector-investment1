@@ -190,6 +190,8 @@ export interface MA200Regime {
   zone: MA200Zone
   deviationPct: number | null
   slopePositive: boolean | null       // true = 200MA rising, false = declining, null = unknown
+  /** Raw slope: (SMA200_now − SMA200_20bars_ago) / SMA200_20bars_ago — e.g. 0.00087 = +0.087%/bar */
+  slopePct: number | null
   label: string
   color: string                        // hex color for UI
   riskLevel: 'low' | 'medium' | 'high' | 'extreme'
@@ -221,6 +223,7 @@ export function ma200Regime(
     zone: 'INSUFFICIENT_DATA',
     deviationPct: null,
     slopePositive: null,
+    slopePct: null,
     label: 'Insufficient Data',
     color: '#64748b',
     riskLevel: 'medium',
@@ -365,6 +368,7 @@ export function ma200Regime(
     zone,
     deviationPct: dev,
     slopePositive,
+    slopePct: slope,        // raw numeric slope: e.g. 0.00087 = +0.087%/bar
     label: meta.label,
     color: meta.color,
     riskLevel: meta.riskLevel,
