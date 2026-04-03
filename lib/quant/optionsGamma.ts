@@ -63,7 +63,7 @@ export interface GammaAnalysis {
   totalVega: number
   totalTheta: number       // daily theta burn (negative)
   // GEX metrics
-  totalGammaExposure: number   // sum of absolute net gamma * spot * 0.01
+  totalGammaExposure: number   // GEX = Sum(|netGamma|) where netGamma = callGamma * callOi - putGamma * putOi per strike
   gammaFlipStrike: number      // strike where net gamma crosses zero
   zeroGammaLower: number       // lower bound of zero-gamma zone
   zeroGammaUpper: number       // upper bound of zero-gamma zone
@@ -108,8 +108,8 @@ function normPdf(x: number): number {
 }
 
 // Approximate d1, d2 for Black-Scholes
-function bsD1D2(S: number, K: number, T: number, r: number, sigma: number) {
-  const d1 = (Math.log(S / K) + (r + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T))
+function bsD1D2(S: number, K: number, T: number, r: number, q: number, sigma: number) {
+  const d1 = (Math.log(S / K) + (r - q + (sigma * sigma) / 2) * T) / (sigma * Math.sqrt(T))
   const d2 = d1 - sigma * Math.sqrt(T)
   return { d1, d2 }
 }
@@ -118,21 +118,21 @@ function bsD1D2(S: number, K: number, T: number, r: number, sigma: number) {
 
 /**
  * Estimate delta from implied volatility and moneyness
- * For calls: N(d1), For puts: N(d1) - 1
+ * For calls: N(d1), For puts: N(d1) - exp(-q*T)
  */
-export function approxDelta(spot: number, strike: number, T: number, r: number, sigma: number, type: 'call' | 'put'): number {
+export function approxDelta(spot: number, strike: number, T: number, r: number, q: number, sigma: number, type: 'call' | 'put'): number {
   if (T <= 0 || sigma <= 0) return type === 'call' ? 1 : -1
-  const { d1 } = bsD1D2(spot, strike, T, r, sigma)
-  return type === 'call' ? normCdf(d1) : normCdf(d1) - 1
+  const { d1 } = bsD1D2(spot, strike, T, r, q, sigma)
+  return type === 'call' ? normCdf(d1) : normCdf(d1) - Math.exp(-q * T)
 }
 
 /**
  * Estimate gamma from implied volatility
  * Gamma is the same for calls and puts
  */
-export function approxGamma(spot: number, strike: number, T: number, r: number, sigma: number): number {
+export function approxGamma(spot: number, strike: number, T: number, r: number, q: number, sigma: number): number {
   if (T <= 0 || sigma <= 0) return 0
-  const { d1 } = bsD1D2(spot, strike, T, r, sigma)
+  const { d1 } = bsD1D2(spot, strike, T, r, q, sigma)
   return normPdf(d1) / (spot * sigma * Math.sqrt(T))
 }
 
@@ -140,9 +140,9 @@ export function approxGamma(spot: number, strike: number, T: number, r: number, 
  * Estimate vega from implied volatility
  * Per 1% (0.01) move in vol
  */
-export function approxVega(spot: number, strike: number, T: number, r: number, sigma: number): number {
+export function approxVega(spot: number, strike: number, T: number, r: number, q: number, sigma: number): number {
   if (T <= 0 || sigma <= 0) return 0
-  const { d1 } = bsD1D2(spot, strike, T, r, sigma)
+  const { d1 } = bsD1D2(spot, strike, T, r, q, sigma)
   return (spot * normPdf(d1) * Math.sqrt(T)) / 100
 }
 
@@ -150,14 +150,15 @@ export function approxVega(spot: number, strike: number, T: number, r: number, s
  * Estimate theta from implied volatility
  * Daily theta (negative = burn per day)
  */
-export function approxTheta(spot: number, strike: number, T: number, r: number, sigma: number, type: 'call' | 'put'): number {
+export function approxTheta(spot: number, strike: number, T: number, r: number, q: number, sigma: number, type: 'call' | 'put'): number {
   if (T <= 0 || sigma <= 0) return 0
-  const { d1, d2 } = bsD1D2(spot, strike, T, r, sigma)
+  const { d1, d2 } = bsD1D2(spot, strike, T, r, q, sigma)
   const term1 = -(spot * normPdf(d1) * sigma) / (2 * Math.sqrt(T))
   const term2 = r * strike * Math.exp(-r * T)
+  const term3 = q * spot * Math.exp(-q * T)
   const theta = type === 'call'
-    ? (term1 - term2) / 365
-    : (term1 + term2) / 365
+    ? (term1 - term2 + term3) / 365
+    : (term1 + term2 - term3) / 365
   return theta
 }
 
@@ -165,9 +166,9 @@ export function approxTheta(spot: number, strike: number, T: number, r: number, 
  * Estimate rho from implied volatility
  * Per 1% move in interest rate
  */
-export function approxRho(spot: number, strike: number, T: number, r: number, sigma: number, type: 'call' | 'put'): number {
+export function approxRho(spot: number, strike: number, T: number, r: number, q: number, sigma: number, type: 'call' | 'put'): number {
   if (T <= 0 || sigma <= 0) return 0
-  const { d2 } = bsD1D2(spot, strike, T, r, sigma)
+  const { d2 } = bsD1D2(spot, strike, T, r, q, sigma)
   return type === 'call'
     ? (strike * T * Math.exp(-r * T) * normCdf(d2)) / 100
     : (-strike * T * Math.exp(-r * T) * normCdf(-d2)) / 100
@@ -202,10 +203,10 @@ export function normalizeYahooOptionsChain(
     const toContract = (raw: Record<string, unknown>, type: 'call' | 'put'): RawOptionContract => {
       const strike = Number(raw.strike ?? 0)
       const iv = Number(raw.impliedVolatility ?? 0.3)
-      const delta = Number(raw.delta ?? approxDelta(spotPrice, strike, T, RFR, iv, type))
-      const gamma = Number(raw.gamma ?? approxGamma(spotPrice, strike, T, RFR, iv))
-      const theta = Number(raw.theta ?? approxTheta(spotPrice, strike, T, RFR, iv, type))
-      const vega = Number(raw.vega ?? approxVega(spotPrice, strike, T, RFR, iv))
+      const delta = Number(raw.delta ?? approxDelta(spotPrice, strike, T, RFR, 0, iv, type))
+      const gamma = Number(raw.gamma ?? approxGamma(spotPrice, strike, T, RFR, 0, iv))
+      const theta = Number(raw.theta ?? approxTheta(spotPrice, strike, T, RFR, 0, iv, type))
+      const vega = Number(raw.vega ?? approxVega(spotPrice, strike, T, RFR, 0, iv))
       const moneyness = spotPrice / strike
       const itm = type === 'call' ? moneyness > 1.0 : moneyness < 1.0
 
@@ -317,43 +318,44 @@ export function findGammaFlipStrike(ladder: GammaStrikeLevel[]): number {
  * Calculate Max Pain strike
  * Max Pain = strike where option holders lose the most money at expiry
  * (minimizes total intrinsic value paid to option holders)
+ * Returns per-expiry max pain AND the overall time-weighted strike.
  */
 export function calcMaxPain(
   spotPrice: number,
   expiries: OptionExpiry[]
-): number {
-  const allStrikes = new Set<number>()
-  for (const expiry of expiries) {
-    for (const call of expiry.calls) allStrikes.add(call.strike)
-    for (const put of expiry.puts) allStrikes.add(put.strike)
-  }
+): { overallStrike: number; perExpiry: Array<{ expiry: string; strike: number; pain: number }> } {
+  const perExpiryResults = expiries.map(expiry => {
+    const strikes = new Set<number>()
+    expiry.calls.forEach(c => strikes.add(c.strike))
+    expiry.puts.forEach(p => strikes.add(p.strike))
 
-  let minPain = Infinity
-  let maxPainStrike = 0
-
-  for (const strike of allStrikes) {
-    let totalPain = 0
-    for (const expiry of expiries) {
+    let minPain = Infinity, maxPainStrike = 0
+    for (const strike of strikes) {
+      let pain = 0
       for (const call of expiry.calls) {
-        if (call.strike < strike) {
-          // In-the-money call: holder loses intrinsic value
-          totalPain += (strike - call.strike) * call.oi * CONTRACT_MULTIPLIER
-        }
+        if (call.strike < strike) pain += (strike - call.strike) * call.oi * CONTRACT_MULTIPLIER
       }
       for (const put of expiry.puts) {
-        if (put.strike > strike) {
-          // In-the-money put: holder loses intrinsic value
-          totalPain += (put.strike - strike) * put.oi * CONTRACT_MULTIPLIER
-        }
+        if (put.strike > strike) pain += (put.strike - strike) * put.oi * CONTRACT_MULTIPLIER
       }
+      if (pain < minPain) { minPain = pain; maxPainStrike = strike }
     }
-    if (totalPain < minPain) {
-      minPain = totalPain
-      maxPainStrike = strike
-    }
-  }
+    return { expiry: expiry.date, strike: maxPainStrike, pain: minPain }
+  })
 
-  return maxPainStrike
+  // Overall: weight by time-to-expiry (higher weight for nearer expiries)
+  const weights = perExpiryResults.map(r =>
+    Math.exp(-0.04 * (new Date(r.expiry).getTime() - Date.now()) / (1000 * 365 * 24 * 3600))
+  )
+  const totalWeight = weights.reduce((s, w) => s + w, 0)
+  const weightedStrike = totalWeight > 0
+    ? perExpiryResults.reduce((s, r, i) => s + r.strike * weights[i], 0) / totalWeight
+    : spotPrice
+
+  // Round to nearest $5 strike
+  const overallStrike = Math.round(weightedStrike / 5) * 5
+
+  return { overallStrike, perExpiry: perExpiryResults }
 }
 
 /**
@@ -364,8 +366,8 @@ export function findCallWall(
   spotPrice: number,
   ladder: GammaStrikeLevel[]
 ): { strike: number; strength: number } {
-  const totalCallOi = ladder.reduce((s, l) => s + l.callOi, 0)
-  const threshold = totalCallOi * 0.25  // 25% of total call OI
+  const totalCallGammaWeight = ladder.reduce((s, l) => s + l.callGamma * l.callOi, 0)
+  const threshold = totalCallGammaWeight * 0.25  // 25% of total gamma-weighted call OI
 
   // Find strikes above spot sorted ascending
   const aboveSpot = ladder
@@ -374,9 +376,9 @@ export function findCallWall(
 
   let cumsum = 0
   for (const level of aboveSpot) {
-    cumsum += level.callOi
+    cumsum += level.callGamma * level.callOi
     if (cumsum >= threshold) {
-      const strength = Math.min(100, Math.round((cumsum / totalCallOi) * 100))
+      const strength = Math.min(100, Math.round((cumsum / totalCallGammaWeight) * 100))
       return { strike: level.strike, strength }
     }
   }
@@ -394,8 +396,8 @@ export function findPutWall(
   spotPrice: number,
   ladder: GammaStrikeLevel[]
 ): { strike: number; strength: number } {
-  const totalPutOi = ladder.reduce((s, l) => s + l.putOi, 0)
-  const threshold = totalPutOi * 0.25  // 25% of total put OI
+  const totalPutGammaWeight = ladder.reduce((s, l) => s + l.putGamma * l.putOi, 0)
+  const threshold = totalPutGammaWeight * 0.25  // 25% of total gamma-weighted put OI
 
   // Find strikes below spot sorted descending
   const belowSpot = ladder
@@ -404,9 +406,9 @@ export function findPutWall(
 
   let cumsum = 0
   for (const level of belowSpot) {
-    cumsum += level.putOi
+    cumsum += level.putGamma * level.putOi
     if (cumsum >= threshold) {
-      const strength = Math.min(100, Math.round((cumsum / totalPutOi) * 100))
+      const strength = Math.min(100, Math.round((cumsum / totalPutGammaWeight) * 100))
       return { strike: level.strike, strength }
     }
   }
@@ -423,23 +425,33 @@ export function findPutWall(
  * Vanna > 0: falling vol + falling price = accelerating downside
  * Vanna < 0: falling vol + rising price = accelerating upside
  *
- * Approximated from correlation of delta vs IV across strikes
+ * Includes both calls and puts; puts carry negative Vanna ITM.
+ * Weighted by OTM-ness: higher weight away from ATM.
+ * Returns raw weighted sum in gamma-vega terms (no arbitrary normalization).
  */
 export function calcVanna(expiries: OptionExpiry[], spotPrice: number): number {
-  const atmStrikes = expiries.flatMap(e =>
-    e.calls.filter(c => Math.abs(c.strike - spotPrice) / spotPrice < 0.05)
-  )
+  const allAtm = expiries.flatMap(e => [
+    ...e.calls.filter(c => Math.abs(c.strike - spotPrice) / spotPrice < 0.05).map(c => ({ ...c, sign: 1 as const })),
+    ...e.puts.filter(p => Math.abs(p.strike - spotPrice) / spotPrice < 0.05).map(p => ({ ...p, sign: -1 as const })),
+  ])
 
-  if (atmStrikes.length === 0) return 0
+  if (allAtm.length === 0) return 0
 
-  // Vanna approximated as weighted vega / (spot * 0.01)
-  const weightedVanna = atmStrikes.reduce((sum, c) => {
-    const moneyness = Math.abs(c.strike - spotPrice) / spotPrice
-    const weight = Math.exp(-50 * moneyness) // closer to ATM = higher weight
-    return sum + c.vega * weight * c.oi
-  }, 0) / Math.max(1, atmStrikes.reduce((s, c) => s + c.oi, 0))
+  // Weight by OTM-ness: higher weight away from ATM (theoretical Vanna is zero exactly at ATM)
+  const totalWeight = allAtm.reduce((s, c) => {
+    const moneyness = Math.abs(1 - c.strike / spotPrice)
+    return s + moneyness * c.oi
+  }, 0)
 
-  return weightedVanna / (spotPrice * 0.01)
+  if (totalWeight === 0) return 0
+
+  const weightedVanna = allAtm.reduce((sum, c) => {
+    const moneyness = Math.abs(1 - c.strike / spotPrice)
+    const weight = moneyness * c.oi
+    return sum + c.sign * c.vega * weight
+  }, 0)
+
+  return weightedVanna / totalWeight
 }
 
 /**
@@ -526,7 +538,7 @@ export function computeGammaAnalysis(
 
   const { putCallRatio, putCallVolumeRatio } = calcPutCallRatio(expiries)
   const gammaFlipStrike = findGammaFlipStrike(ladder)
-  const maxPain = calcMaxPain(spotPrice, expiries)
+  const maxPainResult = calcMaxPain(spotPrice, expiries)
   const callWall = findCallWall(spotPrice, ladder)
   const putWall = findPutWall(spotPrice, ladder)
   const vanna = calcVanna(expiries, spotPrice)
@@ -564,7 +576,7 @@ export function computeGammaAnalysis(
     gammaFlipStrike,
     zeroGammaLower,
     zeroGammaUpper,
-    maxPainStrike: maxPain,
+    maxPainStrike: maxPainResult.overallStrike,
     callWallStrike: callWall.strike,
     putWallStrike: putWall.strike,
     callWallStrength: callWall.strength,

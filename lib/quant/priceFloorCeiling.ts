@@ -224,14 +224,14 @@ export function detectOrderBlocks(
     const currBodyPct = (currBody / curr.open) * 100
 
     const prevTrendingDown = prev.every((c, j) => j === 0 || c.close <= prev[j - 1].close)
-    const nextConsolidation = next.every(c => Math.abs(c.close - c.open) / c.open < 0.005)
+    const bullishPrevConsolidation = prev.every(c => Math.abs(c.close - c.open) / c.open < 0.005)
 
     if (
       currBodyPct > minBodyPct &&
       curr.close > curr.open &&   // bullish candle
       curr.volume > avgVol * minVolMultiple &&
       prevTrendingDown &&
-      nextConsolidation
+      bullishPrevConsolidation
     ) {
       const obLow = Math.min(...candles.slice(i, i + 3).map(c => c.low))
       const obHigh = Math.max(...candles.slice(i, i + 3).map(c => c.high))
@@ -248,15 +248,15 @@ export function detectOrderBlocks(
     }
 
     // Bearish OB: preceding uptrend, large red candle, high volume
-    const nextTrendingUp = next.every((c, j) => j === 0 || c.close >= next[j - 1].close)
-    const prevConsolidation = prev.every(c => Math.abs(c.close - c.open) / c.open < 0.005)
+    const prevTrendingUp = prev.every((c, j) => j === 0 || c.close >= prev[j - 1].close)
+    const bearishPrevConsolidation = prev.every(c => Math.abs(c.close - c.open) / c.open < 0.005)
 
     if (
       currBodyPct > minBodyPct &&
       curr.close < curr.open &&   // bearish candle
       curr.volume > avgVol * minVolMultiple &&
-      nextTrendingUp &&
-      prevConsolidation
+      prevTrendingUp &&
+      bearishPrevConsolidation
     ) {
       const obLow = Math.min(...candles.slice(i, i + 3).map(c => c.low))
       const obHigh = Math.max(...candles.slice(i, i + 3).map(c => c.high))
@@ -446,12 +446,20 @@ export function calcFibonacciLevels(
   const swingLow = Math.min(...recent.map(c => c.low))
   const range = swingHigh - swingLow
 
+  const currentClose = recent[recent.length - 1].close
+  const priceAboveSwing = currentClose > swingHigh
+  const getLevelType = (retracement: number): 'floor' | 'ceiling' => {
+    if (!priceAboveSwing) return 'floor'
+    const levelPrice = swingHigh - range * retracement
+    return levelPrice > currentClose ? 'ceiling' : 'floor'
+  }
+
   const levels: FibLevel[] = [
-    { label: '23.6%', retracement: 0.236, type: swingHigh > recent[recent.length - 1].close ? 'floor' : 'ceiling' },
-    { label: '38.2%', retracement: 0.382, type: 'floor' },
-    { label: '50.0%', retracement: 0.5, type: 'floor' },
-    { label: '61.8%', retracement: 0.618, type: 'floor' },
-    { label: '78.6%', retracement: 0.786, type: 'floor' },
+    { label: '23.6%', retracement: 0.236, type: getLevelType(0.236) },
+    { label: '38.2%', retracement: 0.382, type: getLevelType(0.382) },
+    { label: '50.0%', retracement: 0.5, type: getLevelType(0.5) },
+    { label: '61.8%', retracement: 0.618, type: getLevelType(0.618) },
+    { label: '78.6%', retracement: 0.786, type: getLevelType(0.786) },
   ]
 
   return levels.map(l => ({

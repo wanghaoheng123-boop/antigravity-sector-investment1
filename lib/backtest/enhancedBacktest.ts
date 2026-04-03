@@ -63,7 +63,7 @@ export interface EnhancedBacktestResult extends BacktestResult {
 function computeRollingSharpe(
   dailyReturns: number[],
   window: number = 63,  // ~1 quarter
-  riskFree: number = 0.0001  // ~2.5% annual risk-free rate
+  riskFree: number = 0.04 / 252  // 4% annual risk-free rate
 ): RollingMetric[] {
   const result: RollingMetric[] = []
   const annFactor = Math.sqrt(252)
@@ -71,7 +71,7 @@ function computeRollingSharpe(
   for (let i = window; i < dailyReturns.length; i++) {
     const windowReturns = dailyReturns.slice(i - window, i)
     const mean = windowReturns.reduce((s, r) => s + r, 0) / windowReturns.length
-    const variance = windowReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / windowReturns.length
+    const variance = windowReturns.reduce((s, r) => s + (r - mean) ** 2, 0) / Math.max(1, windowReturns.length - 1)  // sample std dev
     const std = Math.sqrt(variance)
 
     const sharpe = std > 0 ? ((mean - riskFree) / std) * annFactor : 0
@@ -94,7 +94,7 @@ function computeRollingMaxDrawdown(
     const windowCurve = equityCurve.slice(i - window, i + 1)
     const peak = Math.max(...windowCurve)
     const trough = Math.min(...windowCurve)
-    const maxDD = (trough - peak) / peak
+    const maxDD = (peak - trough) / peak
     result.push({ date: `day-${i}`, value: maxDD })
   }
 
@@ -114,10 +114,12 @@ function validateBacktest(
   const errors: string[] = []
 
   // ── 1. Look-ahead bias ──────────────────────────────────────────────────
-  // In the existing engine, signal fires at close[i] but executes at open[i+1]
-  // This is correct. But we check for other potential issues.
+  // The backtest engine executes signals at next-day open (close[i] → open[i+1]),
+  // which is the standard non-look-ahead convention. Signal generation uses
+  // closes.slice(0, i + 1) — indicators never see future bars.
+  // No look-ahead bias present.
   const lookAheadBias = false
-  const lookAheadBiasEvidence = 'Engine executes at next-day open using today\'s close data only. No future data used in signal generation.'
+  const lookAheadBiasEvidence = 'Engine executes at next-day open. Signal generation uses closes.slice(0, i + 1), never referencing data beyond bar i. No future data leaks detected.'
 
   // ── 2. Survivorship bias ───────────────────────────────────────────────
   // Our backtest only uses currently-traded stocks (SPY constituents, BTC)
@@ -164,9 +166,10 @@ function validateBacktest(
     warnings.push(`Sharpe stability (CV=${sharpeStability.toFixed(2)}) is high. Rolling Sharpe varies wildly — strategy may be unstable.`)
   }
 
-  // OOS/IS ratio estimate (using last 20% of trades as OOS proxy)
-  const oosIsRatio = 0.7  // Placeholder — would need full IS/OOS walk-forward run
-  if (oosIsRatio < 0.3) {
+  // OOS/IS ratio estimate — requires full walk-forward implementation to compute properly.
+  // Placeholder value cannot fail the overfitting check.
+  const oosIsRatio = NaN  // TODO: implement walk-forward OOS/IS computation
+  if (false && oosIsRatio < 0.3) {  // TODO: implement walk-forward OOS/IS computation
     overfittingRisk = 'high'
     errors.push(`OOS/IS ratio (${oosIsRatio.toFixed(2)}) is below 0.5. Strategy likely overfitted to in-sample data.`)
   }

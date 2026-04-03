@@ -7,6 +7,12 @@ import SectorHeatmap from '@/components/backtest/SectorHeatmap'
 import InstrumentTable from '@/components/backtest/InstrumentTable'
 import TradeLog from '@/components/backtest/TradeLog'
 import type { BacktestResult } from '@/lib/backtest/engine'
+import {
+  DEFAULT_STRATEGY_CONFIG,
+  STRATEGY_PRESETS,
+  applyStrategyPreset,
+  type PresetName,
+} from '@/lib/simulator/strategyConfig'
 
 interface BacktestData {
   runId: string
@@ -43,6 +49,27 @@ function fmtRatio(v: number | null): string {
   return v == null ? '—' : v === Infinity ? '∞' : v.toFixed(2)
 }
 
+// ─── Known tickers for autocomplete ─────────────────────────────────────────────
+
+const KNOWN_TICKERS = [
+  // Tech
+  'AAPL', 'MSFT', 'NVDA', 'GOOGL', 'META', 'AMZN', 'TSLA', 'AVGO', 'ORCL', 'CSCO', 'ADBE', 'CRM', 'AMD', 'INTC', 'QCOM',
+  // Healthcare
+  'JNJ', 'UNH', 'LLY', 'PFE', 'ABBV', 'MRK', 'TMO', 'ABT', 'DHR', 'BMY', 'AMGN', 'GILD',
+  // Finance
+  'JPM', 'BAC', 'WFC', 'GS', 'MS', 'C', 'BLK', 'AXP', 'SCHW',
+  // Consumer
+  'PG', 'KO', 'PEP', 'COST', 'WMT', 'HD', 'MCD', 'SBUX', 'TGT', 'LOW',
+  // Energy
+  'XOM', 'CVX', 'COP', 'SLB', 'EOG', 'PXD', 'OXY',
+  // Industrials
+  'CAT', 'DE', 'BA', 'HON', 'UPS', 'RTX', 'LMT', 'GE',
+  // Sectors ETFs
+  'XLK', 'XLV', 'XLF', 'XLE', 'XLY', 'XLP', 'XLI', 'XLB', 'XLRE', 'XLU', 'VO',
+  // Indices & Other
+  'SPY', 'QQQ', 'DIA', 'IWM', 'BTC', 'GLD', 'TLT', 'UNG', 'DBC',
+]
+
 // ─── Metric card ───────────────────────────────────────────────────────────────
 
 function MetricCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
@@ -66,6 +93,11 @@ export default function BacktestPage() {
   // Ticker selector state
   const [selectedTickers, setSelectedTickers] = useState<string[]>([])
   const [tickerQuery, setTickerQuery] = useState('')
+  const [tickerSuggestions, setTickerSuggestions] = useState<string[]>([])
+  // Config panel state
+  const [showConfig, setShowConfig] = useState(false)
+  const [backtestConfig, setBacktestConfig] = useState(DEFAULT_STRATEGY_CONFIG)
+  const [backtestRunning, setBacktestRunning] = useState(false)
 
   const fetchData = useCallback(async (showRefresh = false, tickers?: string[]) => {
     if (showRefresh) setRefreshing(true)
@@ -153,6 +185,12 @@ export default function BacktestPage() {
                 <div className="text-sm font-mono text-slate-300">{new Date(computedAt).toLocaleString()}</div>
               </div>
               <button
+                onClick={() => setShowConfig(c => !c)}
+                className="px-3 py-1.5 bg-cyan-500/20 text-cyan-300 text-xs rounded-lg border border-cyan-500/40 hover:bg-cyan-500/30"
+              >
+                {showConfig ? 'Hide Config' : 'Configure Strategy'}
+              </button>
+              <button
                 onClick={() => fetchData(true, selectedTickers.length > 0 ? selectedTickers : undefined)}
                 disabled={refreshing}
                 className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded-lg border border-slate-700 hover:bg-slate-700 disabled:opacity-50"
@@ -162,17 +200,142 @@ export default function BacktestPage() {
             </div>
           </div>
 
+          {/* Strategy Configuration Panel */}
+          {showConfig && (
+            <div className="mt-4 border border-slate-800 rounded-xl p-4 bg-slate-900/40 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-white uppercase tracking-wider text-slate-400">Strategy Configuration</h3>
+              </div>
+
+              {/* Preset selector */}
+              <div className="flex flex-wrap gap-2">
+                {STRATEGY_PRESETS.map(preset => (
+                  <button
+                    key={preset.name}
+                    onClick={() => {
+                      setBacktestConfig(applyStrategyPreset(preset.name as PresetName))
+                    }}
+                    className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded-lg border border-slate-700 hover:bg-slate-700 hover:border-cyan-500/40 transition-colors"
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
+
+              {/* Config summary */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] text-slate-500">
+                <div>
+                  <span className="text-slate-400">Strategy Mode:</span>{' '}
+                  {backtestConfig.strategyMode.strategyMode === 'regime' ? 'Regime Dip-Buy' :
+                   backtestConfig.strategyMode.strategyMode === 'momentum' ? 'Momentum Breakout' :
+                   backtestConfig.strategyMode.strategyMode === 'mean_reversion' ? 'Mean Reversion' : 'Breakout'}
+                </div>
+                <div>
+                  <span className="text-slate-400">Kelly:</span>{' '}
+                  {backtestConfig.positionSizing.kellyMode === 'half' ? 'Half-Kelly' :
+                   backtestConfig.positionSizing.kellyMode === 'quarter' ? 'Quarter-Kelly' :
+                   backtestConfig.positionSizing.kellyMode === 'full' ? 'Full Kelly' : 'Fixed'}
+                </div>
+                <div>
+                  <span className="text-slate-400">Stop Loss:</span> ATR {backtestConfig.stopLoss.stopLossAtrMultiplier}×, {(backtestConfig.stopLoss.stopLossFloor * 100).toFixed(0)}–{(backtestConfig.stopLoss.stopLossCeiling * 100).toFixed(0)}%
+                </div>
+                <div>
+                  <span className="text-slate-400">Lookback:</span> {backtestConfig.backtestPeriod.lookbackYears} years
+                </div>
+              </div>
+
+              {/* Run Backtest button */}
+              <div className="flex gap-3 pt-2">
+                <button
+                  onClick={async () => {
+                    setBacktestRunning(true)
+                    try {
+                      const tickersParam = selectedTickers.length > 0 ? selectedTickers.join(',') : undefined
+                      const url = tickersParam
+                        ? apiUrl(`/api/backtest?tickers=${tickersParam}`)
+                        : apiUrl('/api/backtest')
+                      const res = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                          config: backtestConfig,
+                          tickers: selectedTickers.length > 0 ? selectedTickers : undefined,
+                        }),
+                      })
+                      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+                      const json: BacktestData = await res.json()
+                      setData(json)
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : 'Backtest failed')
+                    } finally {
+                      setBacktestRunning(false)
+                    }
+                  }}
+                  disabled={backtestRunning}
+                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold rounded-lg transition-all disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500"
+                >
+                  {backtestRunning ? 'Running…' : 'Run Backtest'}
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Ticker selector bar */}
           <div className="mt-4 flex flex-wrap gap-3 items-center border border-slate-800 rounded-lg px-4 py-3 bg-slate-900/40">
             <span className="text-[11px] text-slate-400 shrink-0">Instruments:</span>
-            {/* Search input */}
-            <input
-              type="text"
-              value={tickerQuery}
-              onChange={(e) => setTickerQuery(e.target.value.toUpperCase())}
-              placeholder="Search ticker (e.g. AAPL, NVDA)"
-              className="w-40 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50"
-            />
+            {/* Search input with autocomplete */}
+            <div className="relative">
+              <input
+                type="text"
+                value={tickerQuery}
+                onChange={(e) => {
+                  const val = e.target.value.toUpperCase()
+                  setTickerQuery(val)
+                  if (val.length > 0) {
+                    const matches = KNOWN_TICKERS.filter(t =>
+                      t.includes(val) && !selectedTickers.includes(t)
+                    ).slice(0, 5)
+                    setTickerSuggestions(matches)
+                  } else {
+                    setTickerSuggestions([])
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && tickerQuery.trim()) {
+                    if (tickerSuggestions.length > 0 && !selectedTickers.includes(tickerSuggestions[0])) {
+                      setSelectedTickers(prev => [...prev, tickerSuggestions[0]])
+                      setTickerQuery('')
+                      setTickerSuggestions([])
+                    } else if (!selectedTickers.includes(tickerQuery.trim())) {
+                      setSelectedTickers(prev => [...prev, tickerQuery.trim()])
+                      setTickerQuery('')
+                      setTickerSuggestions([])
+                    }
+                  }
+                }}
+                onBlur={() => setTimeout(() => setTickerSuggestions([]), 150)}
+                placeholder="Search ticker (e.g. AAPL, NVDA)"
+                className="w-40 bg-slate-800 border border-slate-700 rounded px-2 py-1 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500/50"
+              />
+              {/* Autocomplete dropdown */}
+              {tickerSuggestions.length > 0 && (
+                <div className="absolute top-full left-0 mt-1 w-40 bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50 overflow-hidden">
+                  {tickerSuggestions.map(t => (
+                    <button
+                      key={t}
+                      onMouseDown={() => {
+                        setSelectedTickers(prev => [...prev, t])
+                        setTickerQuery('')
+                        setTickerSuggestions([])
+                      }}
+                      className="w-full px-3 py-1.5 text-xs text-left text-white hover:bg-cyan-500/20 hover:text-cyan-300 transition-colors"
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {/* Quick-add button */}
             {tickerQuery && !selectedTickers.includes(tickerQuery) && (
               <button
@@ -180,6 +343,7 @@ export default function BacktestPage() {
                   if (tickerQuery.trim()) {
                     setSelectedTickers(prev => [...prev, tickerQuery.trim()])
                     setTickerQuery('')
+                    setTickerSuggestions([])
                   }
                 }}
                 className="px-2 py-1 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 text-[10px] rounded hover:bg-cyan-500/30"

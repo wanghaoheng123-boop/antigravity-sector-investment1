@@ -202,6 +202,7 @@ function customRegimeSignal(
   closes: number[],
   rsi14: number | undefined,
   cfg: RegimeConfig,
+  confirmCfg: ConfirmationConfig,
 ): RegimeZoneResult {
   const smaPeriod = cfg.smaPeriod
   const smaSlopeLookback = cfg.smaSlopeLookback
@@ -287,7 +288,7 @@ function customRegimeSignal(
 
   if (dev != null && dev >= zones.firstDipThreshold) {
     if (canBuyDip) {
-      const conf = rsi14 != null && rsi14 < 35 ? 90 : 75
+      const conf = rsi14 != null && rsi14 < confirmCfg.rsiBullThreshold ? 90 : 75
       return {
         zone: 'FIRST_DIP',
         dipSignal: 'STRONG_DIP',
@@ -433,8 +434,10 @@ function momentumSignal(
     ? 70
     : 50
 
+  const kellyFrac = getKellyFraction(action, confidence, cfg.positionSizing)
+
   const reason = action === 'BUY'
-    ? `Momentum: price > SMA(${regimeCfg.smaPeriod}), SMA rising, RSI(${rsi14?.toFixed(1)}) not overbought. Kelly 15%.`
+    ? `Momentum: price > SMA(${regimeCfg.smaPeriod}), SMA rising, RSI(${rsi14?.toFixed(1)}) not overbought. Kelly ${(kellyFrac * 100).toFixed(0)}%.`
     : action === 'SELL'
     ? `Momentum exit: price < SMA or RSI overbought.`
     : `Momentum: conditions not met.`
@@ -442,7 +445,7 @@ function momentumSignal(
   return {
     action,
     confidence,
-    KellyFraction: 0.15,
+    KellyFraction: kellyFrac,
     reason,
     regime: {
       zone: action === 'BUY' ? 'MOMENTUM_BUY' : action === 'SELL' ? 'MOMENTUM_SELL' : 'MOMENTUM_WAIT',
@@ -585,17 +588,19 @@ function breakoutSignal(
   if (priceBreakout && volumeConfirm) {
     action = 'BUY'
     confidence = Math.min(90, 60 + (volumeConfirm ? 20 : 0))
-    reason = `Breakout: price ${price.toFixed(2)} above high ${highestHigh.toFixed(2)} with volume ${(currentVolume / avgVolume).toFixed(1)}x avg. Kelly 20%.`
+    reason = `Breakout: price ${price.toFixed(2)} above high ${highestHigh.toFixed(2)} with volume ${(currentVolume / avgVolume).toFixed(1)}x avg.`
   } else if (priceBreakdown) {
     action = 'SELL'
     confidence = 75
     reason = `Breakout: price ${price.toFixed(2)} below low ${lowestLow.toFixed(2)}. Exit.`
   }
 
+  const kellyFrac = getKellyFraction(action, confidence, cfg.positionSizing)
+
   return {
     action,
     confidence,
-    KellyFraction: action === 'BUY' ? 0.20 : 0,
+    KellyFraction: kellyFrac,
     reason,
     regime: {
       zone: `BREAKOUT_${action}`,
@@ -625,7 +630,10 @@ function getKellyFraction(
 
   let kelly = 0.10 // default base
 
-  for (const scale of positionCfg.confidenceScales) {
+  const sortedScales = [...positionCfg.confidenceScales].sort(
+    (a, b) => b.confidenceThreshold - a.confidenceThreshold,
+  )
+  for (const scale of sortedScales) {
     if (confidence >= scale.confidenceThreshold) {
       kelly = scale.kellyFraction
     }
@@ -725,8 +733,7 @@ function runSimulator(
   )
   const atrVals = atr(bars, stopCfg.stopLossAtrPeriod)
   const txCostPct = (config.transactionCosts?.txCostBpsPerSide ?? 11) / 10000
-
-  const ENTRY_SLIPPAGE_BPS = 2
+  const entrySlippageBps = config.transactionCosts?.entrySlippageBps ?? 2
 
   for (let i = regimeWarmup; i < rows.length - 1; i++) {
     const signalDate = new Date(rows[i].time * 1000).toISOString().split('T')[0]
@@ -854,7 +861,7 @@ function runSimulator(
       sig = breakoutSignal(signalPrice, lookbackCloses, lookbackVolumes, lookbackBars, config)
     } else {
       // regime mode — use custom regime signal
-      const regime = customRegimeSignal(signalPrice, lookbackCloses, rsi14, config.regime)
+      const regime = customRegimeSignal(signalPrice, lookbackCloses, rsi14, config.regime, config.confirmations)
 
       // Confirmation signals
       const macdVals = macdFn(lookbackCloses, confirmCfg.macdFast, confirmCfg.macdSlow, confirmCfg.macdSignal)
@@ -909,7 +916,7 @@ function runSimulator(
 
       const kellyFrac = Math.min(sig.KellyFraction, 0.50)
       const allocation = state.capital * kellyFrac
-      const entryPrice = nextOpen * (1 + ENTRY_SLIPPAGE_BPS / 10000)
+      const entryPrice = nextOpen * (1 + entrySlippageBps / 10000)
       const shares = Math.floor(allocation / entryPrice)
       if (shares <= 0) {
         state.equityHistory.push(currentSimulatorEquity(state))

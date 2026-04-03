@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation'
 import { apiUrl } from '@/lib/apiBase'
 import LiveQuoteCard from '@/components/simulator/LiveQuoteCard'
 import SimulatorResults from '@/components/simulator/SimulatorResults'
+import StrategyBuilder from '@/components/simulator/StrategyBuilder'
 import type { BacktestResult } from '@/lib/backtest/engine'
 import type { StrategyConfig } from '@/lib/simulator/strategyConfig'
 import {
@@ -105,215 +106,6 @@ function MetricCard({ label, value, color }: { label: string; value: string; col
   )
 }
 
-// ─── Strategy Builder (inline) ─────────────────────────────────────────────────
-
-function StrategyBuilder({
-  config,
-  onChange,
-}: {
-  config: StrategyConfig
-  onChange: (cfg: StrategyConfig) => void
-}) {
-  const [activePreset, setActivePreset] = useState<PresetName>('Balanced')
-  const [strategyMode, setStrategyMode] = useState<StrategyMode>(config.strategyMode.strategyMode)
-
-  const update = useCallback((patch: Partial<StrategyConfig>) => {
-    onChange({ ...config, ...patch })
-  }, [config, onChange])
-
-  const updatePreset = (name: PresetName) => {
-    const preset = STRATEGY_PRESETS.find(p => p.name === name)
-    if (preset) {
-      setActivePreset(name)
-      setStrategyMode(preset.config.strategyMode.strategyMode)
-      onChange(preset.config)
-    }
-  }
-
-  const updateMode = (mode: StrategyMode) => {
-    setStrategyMode(mode)
-    onChange({
-      ...config,
-      strategyMode: { ...config.strategyMode, strategyMode: mode },
-    })
-  }
-
-  return (
-    <div className="space-y-5">
-      {/* Preset selector */}
-      <div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Strategy Preset</div>
-        <div className="grid grid-cols-2 gap-2">
-          {STRATEGY_PRESETS.map(preset => (
-            <button
-              key={preset.name}
-              onClick={() => updatePreset(preset.name)}
-              className={`px-3 py-2 rounded-lg border text-xs text-left transition-all ${
-                activePreset === preset.name
-                  ? 'bg-cyan-500/10 border-cyan-500/40 text-cyan-300'
-                  : 'bg-slate-800/40 border-slate-700/50 text-slate-400 hover:border-slate-600'
-              }`}
-            >
-              <div className="font-bold text-white mb-0.5">{preset.name}</div>
-              <div className="text-[10px] text-slate-500 leading-relaxed line-clamp-2">{preset.description.slice(0, 80)}…</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Strategy mode */}
-      <div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Strategy Mode</div>
-        <div className="grid grid-cols-2 gap-2">
-          {(Object.entries(STRATEGY_MODE_INFO) as [StrategyMode, typeof STRATEGY_MODE_INFO[StrategyMode]][]).map(([mode, info]) => (
-            <button
-              key={mode}
-              onClick={() => updateMode(mode)}
-              className={`px-3 py-2 rounded-lg border text-left transition-all ${
-                strategyMode === mode
-                  ? `${info.borderColor} bg-slate-800/60`
-                  : 'border-slate-700/40 bg-slate-800/20 hover:border-slate-600'
-              }`}
-            >
-              <div className={`text-xs font-bold mb-0.5 ${strategyMode === mode ? info.color : 'text-slate-400'}`}>
-                {info.title}
-              </div>
-              <div className="text-[10px] text-slate-600 leading-relaxed line-clamp-2">{info.desc}</div>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Key parameters */}
-      <div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Position Sizing</div>
-        <div className="bg-slate-800/40 rounded-lg border border-slate-700/50 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Kelly Mode</span>
-            <select
-              value={config.positionSizing.kellyMode}
-              onChange={e => update({
-                positionSizing: {
-                  ...config.positionSizing,
-                  kellyMode: e.target.value as 'full' | 'half' | 'quarter' | 'fixed',
-                },
-              })}
-              className="bg-slate-700 text-slate-200 text-xs rounded px-2 py-1 border border-slate-600"
-            >
-              <option value="half">Half-Kelly (Recommended)</option>
-              <option value="quarter">Quarter-Kelly</option>
-              <option value="full">Full Kelly</option>
-              <option value="fixed">Fixed Size</option>
-            </select>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Max Position</span>
-            <select
-              value={config.positionSizing.maxKellyFraction}
-              onChange={e => update({
-                positionSizing: {
-                  ...config.positionSizing,
-                  maxKellyFraction: parseFloat(e.target.value),
-                },
-              })}
-              className="bg-slate-700 text-slate-200 text-xs rounded px-2 py-1 border border-slate-600"
-            >
-              <option value="0.10">10%</option>
-              <option value="0.15">15%</option>
-              <option value="0.20">20%</option>
-              <option value="0.25">25%</option>
-              <option value="0.40">40%</option>
-            </select>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Confidence Threshold</span>
-            <span className="text-xs font-mono text-cyan-400">
-              {config.positionSizing.confidenceScales[0]?.confidenceThreshold ?? 55}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Stop Loss */}
-      <div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Risk Management</div>
-        <div className="bg-slate-800/40 rounded-lg border border-slate-700/50 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">ATR Stop Multiplier</span>
-            <span className="text-xs font-mono text-amber-400">{config.stopLoss.stopLossAtrMultiplier}×</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Stop Floor</span>
-            <span className="text-xs font-mono text-slate-300">{(config.stopLoss.stopLossFloor * 100).toFixed(0)}%</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Stop Ceiling</span>
-            <span className="text-xs font-mono text-slate-300">{(config.stopLoss.stopLossCeiling * 100).toFixed(0)}%</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Max Portfolio DD</span>
-            <span className="text-xs font-mono text-red-400">−{(config.stopLoss.maxDrawdownCap * 100).toFixed(0)}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Entry confirmations */}
-      <div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Confirmations</div>
-        <div className="bg-slate-800/40 rounded-lg border border-slate-700/50 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">Min Confirmations</span>
-            <span className="text-xs font-mono text-white">{config.confirmations.minConfirmations} of 4</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">RSI Buy Threshold</span>
-            <span className="text-xs font-mono text-emerald-400">&lt;{config.confirmations.rsiBullThreshold}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">RSI Sell Threshold</span>
-            <span className="text-xs font-mono text-red-400">&gt;{config.confirmations.rsiBearThreshold}</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">ATR% Threshold</span>
-            <span className="text-xs font-mono text-slate-300">&gt;{config.confirmations.atrBullThreshold}%</span>
-          </div>
-          <div className="flex items-center justify-between">
-            <span className="text-xs text-slate-400">BB% Threshold</span>
-            <span className="text-xs font-mono text-slate-300">&lt;{(config.confirmations.bbBullThreshold * 100).toFixed(0)}%</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Lookback period */}
-      <div>
-        <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-2">Backtest Period</div>
-        <div className="flex items-center gap-3">
-          <input
-            type="range"
-            min={1}
-            max={10}
-            step={1}
-            value={config.backtestPeriod.lookbackYears}
-            onChange={e => update({
-              backtestPeriod: {
-                ...config.backtestPeriod,
-                lookbackYears: parseInt(e.target.value),
-              },
-            })}
-            className="flex-1 accent-cyan-500"
-          />
-          <span className="text-xs font-mono text-cyan-400 w-16 text-right">
-            {config.backtestPeriod.lookbackYears}Y
-          </span>
-        </div>
-        <div className="text-[10px] text-slate-600 mt-1">
-          ~{config.backtestPeriod.lookbackYears * 252} trading days
-        </div>
-      </div>
-    </div>
-  )
-}
-
 // ─── Main Simulator Page ─────────────────────────────────────────────────────────
 
 function SimulatorPageContent() {
@@ -339,6 +131,9 @@ function SimulatorPageContent() {
   const [tickerQuery, setTickerQuery] = useState('')
   const [showGuide, setShowGuide] = useState(false)
   const [showResults, setShowResults] = useState(false)
+  const [configSource, setConfigSource] = useState<'preset' | 'custom'>(
+    urlPreset ? 'preset' : 'custom',
+  )
 
   const [liveQuotes, setLiveQuotes] = useState<Record<string, {
     price?: number
@@ -355,6 +150,7 @@ function SimulatorPageContent() {
 
   const [results, setResults] = useState<SimulatorApiResponse | null>(null)
   const [running, setRunning] = useState(false)
+  const [statusMessage, setStatusMessage] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [secondsAgo, setSecondsAgo] = useState(0)
@@ -402,6 +198,7 @@ function SimulatorPageContent() {
     }
     setRunning(true)
     setError(null)
+    setStatusMessage(`Running backtest simulation for ${watchlist.length} instruments...`)
     try {
       const res = await fetch(apiUrl('/api/simulator/run'), {
         method: 'POST',
@@ -421,6 +218,7 @@ function SimulatorPageContent() {
       setError(e instanceof Error ? e.message : 'Simulation failed')
     } finally {
       setRunning(false)
+      setStatusMessage('')
     }
   }
 
@@ -505,6 +303,11 @@ function SimulatorPageContent() {
             <span><span className="text-slate-400">Stop Loss:</span> ATR {config.stopLoss.stopLossAtrMultiplier}×, {(config.stopLoss.stopLossFloor * 100).toFixed(0)}–{(config.stopLoss.stopLossCeiling * 100).toFixed(0)}%</span>
             <span><span className="text-slate-400">Lookback:</span> {config.backtestPeriod.lookbackYears} years</span>
             <span><span className="text-slate-400">Instruments:</span> {watchlist.length} selected</span>
+            {configSource === 'custom' && (
+              <span className="px-1.5 py-0.5 bg-amber-500/20 border border-amber-500/40 rounded text-amber-400 text-[10px] font-medium">
+                Custom
+              </span>
+            )}
           </div>
         </div>
       </div>
@@ -548,7 +351,12 @@ function SimulatorPageContent() {
                 </div>
               )}
 
-              <StrategyBuilder config={config} onChange={setConfig} />
+              <StrategyBuilder
+                initialConfig={config}
+                isRunning={running}
+                onRun={(cfg) => { setConfig(cfg); setConfigSource('custom') }}
+                onReset={() => { setConfig(DEFAULT_STRATEGY_CONFIG); setConfigSource('custom') }}
+              />
             </div>
           </div>
 
@@ -669,6 +477,13 @@ function SimulatorPageContent() {
                 </>
               )}
             </button>
+
+            {/* Status message */}
+            {running && statusMessage && (
+              <div className="text-center text-xs text-cyan-400 py-2 animate-pulse">
+                {statusMessage}
+              </div>
+            )}
 
             {/* Error message */}
             {error && (

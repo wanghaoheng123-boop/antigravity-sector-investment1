@@ -99,6 +99,19 @@ export async function GET(
     const askSize = quoteResult.askSize ?? 0
     const spotChangePct = quoteResult.regularMarketChangePercent ?? 0
 
+    // Compute signed net gamma from options chain ladder
+    let netGamma = 0
+    try {
+      const baseUrl = process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000'
+      const optRes = await fetch(`${baseUrl}/api/options/chain/${ticker}`, { cache: 'no-store' })
+      if (optRes.ok) {
+        const optData = await optRes.json()
+        if (optData.gammaLadder) {
+          netGamma = optData.gammaLadder.reduce((s: number, l: { netGamma: number }) => s + l.netGamma, 0)
+        }
+      }
+    } catch { /* netGamma remains 0 */ }
+
     const mmState = buildMarketMakerState(
       ticker,
       quoteTime,
@@ -107,7 +120,7 @@ export async function GET(
       ask,
       bidSize,
       askSize,
-      0,
+      netGamma,
       spotChangePct
     )
 

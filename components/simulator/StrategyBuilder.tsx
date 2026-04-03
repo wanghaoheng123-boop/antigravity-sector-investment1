@@ -46,26 +46,55 @@ interface LiveQuote {
 // ─── Tooltip Component ─────────────────────────────────────────────────────────
 
 interface TooltipProps {
-  content: React.ReactNode
+  brief: React.ReactNode
+  detail?: React.ReactNode
   children: React.ReactNode
 }
 
-function Tooltip({ content, children }: TooltipProps) {
-  const [visible, setVisible] = useState(false)
-  const ref = useRef<HTMLDivElement>(null)
+function Tooltip({ brief, detail, children }: TooltipProps) {
+  const [briefVisible, setBriefVisible] = useState(false)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const briefRef = useRef<HTMLDivElement>(null)
+  const detailRef = useRef<HTMLDivElement>(null)
+
+  const hasDetail = detail !== undefined
 
   return (
-    <div ref={ref} className="relative inline-flex items-center">
+    <div ref={briefRef} className="relative inline-flex items-center">
       <div
-        onMouseEnter={() => setVisible(true)}
-        onMouseLeave={() => setVisible(false)}
+        onMouseEnter={() => !detailOpen && setBriefVisible(true)}
+        onMouseLeave={() => setBriefVisible(false)}
       >
         {children}
       </div>
-      {visible && (
+      {briefVisible && !detailOpen && (
         <div className="absolute left-full top-0 ml-2 z-50 w-80 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-4 pointer-events-none">
           <div className="text-xs text-slate-300 leading-relaxed space-y-2">
-            {content}
+            {brief}
+          </div>
+          <div className="absolute left-0 top-4 -translate-x-2 w-0 h-0 border-4 border-transparent border-r-slate-600" />
+        </div>
+      )}
+      {hasDetail && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation()
+            setBriefVisible(false)
+            setDetailOpen(!detailOpen)
+          }}
+          className="w-4 h-4 flex items-center justify-center rounded-full bg-slate-700 text-slate-400 text-[10px] font-bold cursor-pointer ml-1.5 hover:bg-slate-600 hover:text-slate-300 transition-colors"
+        >
+          ℹ
+        </button>
+      )}
+      {detailOpen && detail && (
+        <div
+          ref={detailRef}
+          className="absolute left-full top-0 ml-2 z-50 w-96 bg-slate-800 border border-slate-600 rounded-xl shadow-2xl p-4"
+          onMouseLeave={() => setDetailOpen(false)}
+        >
+          <div className="text-xs text-slate-300 leading-relaxed space-y-2">
+            {detail}
           </div>
           <div className="absolute left-0 top-4 -translate-x-2 w-0 h-0 border-4 border-transparent border-r-slate-600" />
         </div>
@@ -228,17 +257,18 @@ function SectionHeader({ title, subtitle }: { title: string; subtitle?: string }
 
 interface ParamRowProps {
   label: string
-  tooltip: React.ReactNode
+  brief: React.ReactNode
+  tooltip?: React.ReactNode
   children: React.ReactNode
   value?: React.ReactNode
 }
 
-function ParamRow({ label, tooltip, children, value }: ParamRowProps) {
+function ParamRow({ label, brief, tooltip, children, value }: ParamRowProps) {
   return (
     <div className="flex items-start justify-between py-2 px-3 rounded-lg hover:bg-slate-800/40 transition-colors group">
       <div className="flex items-center min-w-0 mr-3">
         <span className="text-xs text-slate-400 truncate">{label}</span>
-        <Tooltip content={tooltip}>
+        <Tooltip brief={brief} detail={tooltip}>
           <TooltipTrigger />
         </Tooltip>
       </div>
@@ -391,7 +421,7 @@ function DeviationZonesPanel({ zones, onChange }: DeviationZonesPanelProps) {
           {fields.map(f => (
             <div key={f.key} className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-slate-800/30">
               <div className="flex items-center min-w-0 mr-2">
-                <Tooltip content={<div>{f.description}<div className="mt-1 text-slate-400">Default: {DEFAULT_DEVIATION_ZONES[f.key]}{f.suffix}</div></div>}>
+                <Tooltip brief={<div>{f.description}<div className="mt-1 text-slate-400">Default: {DEFAULT_DEVIATION_ZONES[f.key]}{f.suffix}</div></div>}>
                   <span className="text-[10px] text-slate-400 truncate">{f.label}</span>
                   <TooltipTrigger />
                 </Tooltip>
@@ -426,6 +456,7 @@ function RegimeTab({ config, onChange }: RegimeTabProps) {
       <div className="space-y-1">
         <ParamRow
           label="SMA Period"
+          brief={<div>The number of daily closing prices averaged to compute the SMA.</div>}
           tooltip={
             <div>
               <div className="font-semibold text-cyan-400 mb-1">Simple Moving Average Period</div>
@@ -441,6 +472,7 @@ function RegimeTab({ config, onChange }: RegimeTabProps) {
 
         <ParamRow
           label="Slope Lookback"
+          brief={<div>Number of bars over which to measure the rate of change of the SMA itself.</div>}
           tooltip={
             <div>
               <div className="font-semibold text-cyan-400 mb-1">SMA Slope Lookback Window</div>
@@ -456,6 +488,7 @@ function RegimeTab({ config, onChange }: RegimeTabProps) {
 
         <ParamRow
           label="Slope Threshold"
+          brief={<div>Minimum % change of the SMA value over the lookback window to consider the trend positive.</div>}
           tooltip={
             <div>
               <div className="font-semibold text-cyan-400 mb-1">Minimum SMA Slope to Confirm Uptrend</div>
@@ -481,6 +514,7 @@ function RegimeTab({ config, onChange }: RegimeTabProps) {
       <div className="space-y-1">
         <ParamRow
           label="Price Proximity Threshold"
+          brief={<div>How close price must have been to the SMA in the recent lookback window to qualify for dip BUY signals.</div>}
           tooltip={
             <div>
               <div className="font-semibold text-cyan-400 mb-1">Price Proximity to SMA Required for BUY</div>
@@ -501,6 +535,7 @@ function RegimeTab({ config, onChange }: RegimeTabProps) {
       <div className="space-y-1">
         <ParamRow
           label="Mode"
+          brief={<div>Dip-buy based on 200SMA deviation zones with positive slope confirmation.</div>}
           tooltip={
             <div>
               <div className="font-semibold text-cyan-400 mb-1">Active Strategy Mode</div>
@@ -546,17 +581,17 @@ function EntryTab({ config, onChange }: EntryTabProps) {
       {/* RSI */}
       <SectionHeader title="RSI (Relative Strength Index)" subtitle="Momentum oscillator measuring speed and change of price movements" />
       <div className="space-y-1">
-        <ParamRow label="RSI Period" tooltip={
+        <ParamRow label="RSI Period" brief={<div>Number of periods for RSI calculation.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">RSI Lookback Period</div><div>Number of periods for RSI calculation. 14 = Wilder's original setting. Shorter periods (7) are more reactive; longer (21) are smoother.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 14-21 · <span className="text-emerald-400">Active:</span> 7-10</div></div>
         } value={`${c.rsiPeriod}`}>
           <NumberInput value={c.rsiPeriod} onChange={v => upd({ rsiPeriod: v })} min={2} max={50} step={1} />
         </ParamRow>
-        <ParamRow label="RSI Bull Threshold" tooltip={
+        <ParamRow label="RSI Bull Threshold" brief={<div>RSI value below which the market is considered oversold/bullish for BUY entries.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">RSI Oversold Threshold for BUY</div><div>RSI value below which the market is considered oversold/bullish for BUY entries. Lower = stricter oversold requirement.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 25-30 (only buy at deep oversold) · <span className="text-emerald-400">Aggressive:</span> 38-42 (allows earlier entries)</div><div className="mt-1 text-slate-500">Must be &lt; RSI Bear Threshold.</div></div>
         } value={`${c.rsiBullThreshold}`}>
           <SliderInput value={c.rsiBullThreshold} onChange={v => upd({ rsiBullThreshold: v })} min={10} max={55} step={1} suffix="" decimals={0} />
         </ParamRow>
-        <ParamRow label="RSI Bear Threshold" tooltip={
+        <ParamRow label="RSI Bear Threshold" brief={<div>RSI value above which the market is considered overbought for SELL signals.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">RSI Overbought Threshold for SELL</div><div>RSI value above which the market is considered overbought for SELL signals.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 65-70 · <span className="text-emerald-400">Aggressive:</span> 58-62 (exit earlier to protect profits)</div></div>
         } value={`${c.rsiBearThreshold}`}>
           <SliderInput value={c.rsiBearThreshold} onChange={v => upd({ rsiBearThreshold: v })} min={45} max={85} step={1} suffix="" decimals={0} />
@@ -568,17 +603,17 @@ function EntryTab({ config, onChange }: EntryTabProps) {
       {/* MACD */}
       <SectionHeader title="MACD (Moving Average Convergence Divergence)" subtitle="Trend-following momentum indicator showing relationship between two EMAs" />
       <div className="space-y-1">
-        <ParamRow label="MACD Fast Period" tooltip={
+        <ParamRow label="MACD Fast Period" brief={<div>The 12-period EMA is the fast line that reacts quickly to price changes.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Fast EMA Period for MACD Line</div><div>The 12-period EMA is the fast line that reacts quickly to price changes. Combined with the slow line to generate the MACD histogram.</div><div className="mt-2 text-slate-400">Standard: 12 · Short-term: 8-10 · Longer-term: 15-17</div></div>
         } value={`${c.macdFast}`}>
           <NumberInput value={c.macdFast} onChange={v => upd({ macdFast: v })} min={5} max={30} step={1} />
         </ParamRow>
-        <ParamRow label="MACD Slow Period" tooltip={
+        <ParamRow label="MACD Slow Period" brief={<div>The 26-period EMA is the slow line that provides the anchor for the MACD.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Slow EMA Period for MACD Line</div><div>The 26-period EMA is the slow line that provides the anchor for the MACD. The difference between fast and slow creates the MACD histogram.</div><div className="mt-2 text-slate-400">Standard: 26 · Short-term: 17-20 · Longer-term: 30-35</div></div>
         } value={`${c.macdSlow}`}>
           <NumberInput value={c.macdSlow} onChange={v => upd({ macdSlow: v })} min={15} max={50} step={1} />
         </ParamRow>
-        <ParamRow label="MACD Signal Period" tooltip={
+        <ParamRow label="MACD Signal Period" brief={<div>The 9-period EMA of the MACD line itself creates the signal line.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">EMA Smoothing Period for Signal Line</div><div>The 9-period EMA of the MACD line itself creates the signal line. Crossovers of MACD vs. signal generate trading signals.</div><div className="mt-2 text-slate-400">Standard: 9 · More signals: 5-7 · Fewer signals: 12-15</div></div>
         } value={`${c.macdSignal}`}>
           <NumberInput value={c.macdSignal} onChange={v => upd({ macdSignal: v })} min={5} max={20} step={1} />
@@ -590,12 +625,12 @@ function EntryTab({ config, onChange }: EntryTabProps) {
       {/* ATR */}
       <SectionHeader title="ATR (Average True Range)" subtitle="Measures market volatility — daily range as a percentage of price" />
       <div className="space-y-1">
-        <ParamRow label="ATR Period" tooltip={
+        <ParamRow label="ATR Period" brief={<div>Number of periods for ATR calculation.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">ATR Calculation Lookback Period</div><div>Number of periods for ATR calculation. 14 = standard. Shorter = more reactive volatility measure.</div><div className="mt-2 text-slate-400">Standard: 14 · Short-term: 7 · Long-term: 21</div></div>
         } value={`${c.atrPeriod}`}>
           <NumberInput value={c.atrPeriod} onChange={v => upd({ atrPeriod: v })} min={5} max={50} step={1} />
         </ParamRow>
-        <ParamRow label="ATR Bull Threshold %" tooltip={
+        <ParamRow label="ATR Bull Threshold %" brief={<div>ATR% = (ATR / Price) × 100 — daily volatility as a % of price.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Minimum ATR% for BUY Signal</div><div>ATR% = (ATR / Price) × 100 — daily volatility as a % of price. ATR% &gt; N means the stock has meaningful daily range suitable for swing trades. ATR% &lt; 1% = low volatility; position may not have enough range to be profitable after costs.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 2.5-4% (only trade volatile instruments) · <span className="text-emerald-400">Aggressive:</span> 1-1.5% (include lower-vol assets)</div></div>
         } value={`${c.atrBullThreshold.toFixed(1)}%`}>
           <SliderInput value={c.atrBullThreshold} onChange={v => upd({ atrBullThreshold: v })} min={0.5} max={6} step={0.1} suffix="%" decimals={1} />
@@ -607,17 +642,17 @@ function EntryTab({ config, onChange }: EntryTabProps) {
       {/* Bollinger Bands */}
       <SectionHeader title="Bollinger Bands" subtitle="Statistical envelope around SMA measuring price deviation from mean" />
       <div className="space-y-1">
-        <ParamRow label="BB Period" tooltip={
+        <ParamRow label="BB Period" brief={<div>Lookback period for the middle band (SMA) and standard deviation calculation.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Bollinger Bands Middle Band Period</div><div>Lookback period for the middle band (SMA) and standard deviation calculation.</div><div className="mt-2 text-slate-400">Standard: 20 · Short-term: 10-15 · Long-term: 30-50</div></div>
         } value={`${c.bbPeriod}`}>
           <NumberInput value={c.bbPeriod} onChange={v => upd({ bbPeriod: v })} min={10} max={100} step={5} />
         </ParamRow>
-        <ParamRow label="BB Std Dev Multiplier" tooltip={
+        <ParamRow label="BB Std Dev Multiplier" brief={<div>How many standard deviations the outer bands are placed from the middle SMA.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Number of Standard Deviations for Outer Bands</div><div>How many standard deviations the outer bands are placed from the middle SMA. 2 = ~95% of price action within bands.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Wide bands:</span> 2.5-3 (fewer signals, more significant) · <span className="text-emerald-400">Tight bands:</span> 1.5-2 (more signals)</div></div>
         } value={`${c.bbStdDev}σ`}>
           <SliderInput value={c.bbStdDev} onChange={v => upd({ bbStdDev: v })} min={1} max={4} step={0.25} suffix="σ" decimals={2} />
         </ParamRow>
-        <ParamRow label="BB Bull Threshold" tooltip={
+        <ParamRow label="BB Bull Threshold" brief={<div>BB% value for bullish BUY confirmation.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">BB% Value for Bullish BUY Confirmation</div><div>BB% = (price - lower band) / (upper band - lower band). BB% &lt; 0.20 means price is in the lower 20% of its recent range — near the lower Bollinger Band, suggesting oversold conditions.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 0.05-0.15 (buy only near absolute lower band) · <span className="text-emerald-400">Aggressive:</span> 0.25-0.40 (buy anywhere in lower half)</div></div>
         } value={c.bbBullThreshold.toFixed(2)}>
           <SliderInput value={c.bbBullThreshold} onChange={v => upd({ bbBullThreshold: v })} min={0.01} max={0.6} step={0.01} suffix="" decimals={2} />
@@ -629,7 +664,7 @@ function EntryTab({ config, onChange }: EntryTabProps) {
       {/* Composite */}
       <SectionHeader title="Composite Confirmation Score" subtitle="BUY signal requires N of 4 indicators to be bullish simultaneously" />
       <div className="space-y-1">
-        <ParamRow label="Min Confirmations for BUY" tooltip={
+        <ParamRow label="Min Confirmations for BUY" brief={<div>The composite score sums bullish indications from RSI, MACD histogram, ATR%, and Bollinger Bands.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Minimum Bullish Indicators Required for BUY</div><div>The composite score sums bullish indications from RSI, MACD histogram, ATR%, and Bollinger Bands. BUY is only triggered when at least N of 4 indicators confirm.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 3-4 (high-quality signals only) · <span className="text-emerald-400">Balanced:</span> 2 (default, recommended) · <span className="text-orange-400">Aggressive:</span> 1 (more trades, more whipsaws)</div><div className="mt-1 text-slate-500">Warning: Setting minConfirmations too low (&lt;2) greatly increases trade frequency and false signals. Setting too high (&gt;3) may generate very few signals.</div></div>
         } value={`${c.minConfirmations} of 4`}>
           <SliderInput value={c.minConfirmations} onChange={v => upd({ minConfirmations: Math.round(v) })} min={1} max={4} step={1} suffix="" decimals={0} />
@@ -658,7 +693,7 @@ function RiskTab({ config, onChange }: RiskTabProps) {
       {/* Stop Loss Mode */}
       <SectionHeader title="Stop Loss Mode" subtitle="Method for calculating initial stop-loss level after entry" />
       <div className="space-y-1">
-        <ParamRow label="Stop Loss Mode" tooltip={
+        <ParamRow label="Stop Loss Mode" brief={<div>Method for calculating initial stop-loss level after entry.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Stop Loss Calculation Method</div><div><span className="text-amber-400">Fixed:</span> Fixed % below entry price. Simplest but doesn't adapt to volatility.</div><div><span className="text-cyan-400">ATR (recommended):</span> ATR-multiple-based stop. Adapts to current market volatility automatically. 1.5× ATR at entry with 2% daily volatility = 3% stop.</div><div><span className="text-emerald-400">Chandelier:</span> Highest high since entry − ATR × multiplier. Trail stop that locks in profits as price rises.</div><div className="mt-1 text-slate-500">ATR mode is recommended for most strategies as it adapts to volatility automatically.</div></div>
         } value="">
           <SelectInput
@@ -671,17 +706,17 @@ function RiskTab({ config, onChange }: RiskTabProps) {
             ]}
           />
         </ParamRow>
-        <ParamRow label="ATR Multiplier" tooltip={
+        <ParamRow label="ATR Multiplier" brief={<div>stopDistance = ATR × multiplier.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">ATR Stop Distance Multiplier</div><div>stopDistance = ATR × multiplier. With ATR% at entry = 2% and multiplier = 1.5, the stop is 3% below entry.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Tight (0.5-1.0×):</span> Suitable for low-vol assets, risks premature stop-outs</div><div><span className="text-cyan-400">Balanced (1.5-2.0×):</span> Default, recommended for most assets</div><div><span className="text-emerald-400">Wide (2.5-4.0×):</span> High-vol assets (ARKK, TQQQ), allows volatility room</div><div className="mt-1 text-slate-500">The floor and ceiling settings constrain the ATR-based stop from being too tight or too wide in low/high volatility environments.</div></div>
         } value={`${s.stopLossAtrMultiplier}×`}>
           <SliderInput value={s.stopLossAtrMultiplier} onChange={v => updStop({ stopLossAtrMultiplier: v })} min={0.5} max={5} step={0.1} suffix="×" decimals={1} />
         </ParamRow>
-        <ParamRow label="Stop Loss Floor" tooltip={
+        <ParamRow label="Stop Loss Floor" brief={<div>Prevents the stop from being unreasonably tight in low-volatility assets.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Minimum Stop Loss as % of Entry</div><div>Prevents the stop from being unreasonably tight in low-volatility assets. Even if ATR-based calculation gives a 1% stop, this floor enforces a minimum.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 2-3% · <span className="text-emerald-400">Standard:</span> 3-5%</div><div className="mt-1 text-slate-500">Floor &lt; 1% risks being triggered by normal daily noise in low-vol assets.</div></div>
         } value={`${(s.stopLossFloor * 100).toFixed(1)}%`}>
           <SliderInput value={s.stopLossFloor * 100} onChange={v => updStop({ stopLossFloor: v / 100 })} min={0.5} max={15} step={0.25} suffix="%" decimals={1} />
         </ParamRow>
-        <ParamRow label="Stop Loss Ceiling" tooltip={
+        <ParamRow label="Stop Loss Ceiling" brief={<div>Prevents the stop from being unreasonably wide, protecting capital efficiency.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Maximum Stop Loss as % of Entry</div><div>Prevents the stop from being unreasonably wide, protecting capital efficiency. Even in high-vol assets, this caps risk per position.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 8-10% · <span className="text-emerald-400">Standard:</span> 12-15% · <span className="text-orange-400">Aggressive:</span> 20-25%</div><div className="mt-1 text-slate-500">Ceiling &gt; 20% defeats the purpose of stop loss as a risk management tool. Most institutional strategies target 5-15% maximum loss per position.</div></div>
         } value={`${(s.stopLossCeiling * 100).toFixed(1)}%`}>
           <SliderInput value={s.stopLossCeiling * 100} onChange={v => updStop({ stopLossCeiling: v / 100 })} min={3} max={40} step={0.5} suffix="%" decimals={1} />
@@ -693,19 +728,19 @@ function RiskTab({ config, onChange }: RiskTabProps) {
       {/* Trailing Stop */}
       <SectionHeader title="Trailing Stop" subtitle="Dynamic stop that locks in profit as price moves in your favor" />
       <div className="space-y-1">
-        <ParamRow label="Use Trailing Stop" tooltip={
+        <ParamRow label="Use Trailing Stop" brief={<div>Enable trailing stop mechanism to lock in profits as price moves in your favor.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Enable Trailing Stop Mechanism</div><div>When enabled, the stop level rises as price moves in your favor, locking in profits. The two-level system (Trail 1 → break-even, Trail 2 → ATR lock) is the industry-standard approach.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Recommended:</span> ON for all strategies. Turning it off means holding through intermediate drawdowns.</div></div>
         } value="">
           <Toggle value={s.useTrailingStop} onChange={v => updStop({ useTrailingStop: v })} />
         </ParamRow>
         {s.useTrailingStop && (
           <>
-            <ParamRow label="Trail ATR Multiplier 1" tooltip={
+            <ParamRow label="Trail ATR Multiplier 1" brief={<div>Lock profit when price moves to: entry + ATR × trailMultiplier1 above entry.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">First Trailing Stop Level</div><div>Lock profit when price moves to: entry + ATR × trailMultiplier1 above entry. At this point the stop is raised to break-even.</div><div className="mt-2">Example: ATR = $2, entry = $100. Profit lock triggers when price reaches $100 + 2×$2 = $104.</div><div className="mt-1 text-slate-500">Trail 1 must be &lt; Trail 2. Too tight (e.g. 1×) = premature lock. Too loose (e.g. 4×) = give back too much profit.</div></div>
             } value={`${s.trailAtrMultiplier1}×`}>
               <SliderInput value={s.trailAtrMultiplier1} onChange={v => updStop({ trailAtrMultiplier1: v })} min={0.5} max={8} step={0.25} suffix="×" decimals={1} />
             </ParamRow>
-            <ParamRow label="Trail ATR Multiplier 2" tooltip={
+            <ParamRow label="Trail ATR Multiplier 2" brief={<div>After reaching Trail 1 profit, stop is tightened to lock in meaningful profit above break-even.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Second Trailing Stop Level</div><div>After reaching Trail 1 profit, stop is tightened to: entry + trailLockMultiplier × ATR. At this level the stop locks in meaningful profit above break-even.</div><div className="mt-2">Example: ATR = $2, entry = $100, trailMultiplier2 = 4×. Profit of 8% reached → stop locks at $100 + 1×$2 = $102.</div><div className="mt-1 text-slate-500">Higher values = let winners run longer. Lower values = lock profit earlier.</div></div>
             } value={`${s.trailAtrMultiplier2}×`}>
               <SliderInput value={s.trailAtrMultiplier2} onChange={v => updStop({ trailAtrMultiplier2: v })} min={1} max={10} step={0.25} suffix="×" decimals={1} />
@@ -719,12 +754,12 @@ function RiskTab({ config, onChange }: RiskTabProps) {
       {/* Portfolio Risk */}
       <SectionHeader title="Portfolio Risk" subtitle="Circuit breakers that protect overall portfolio from prolonged drawdowns" />
       <div className="space-y-1">
-        <ParamRow label="Max Drawdown Cap" tooltip={
+        <ParamRow label="Max Drawdown Cap" brief={<div>If total portfolio equity drops by this fraction from peak, all positions are closed.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Portfolio-Level Maximum Drawdown Circuit Breaker</div><div>If total portfolio equity drops by this fraction from peak, all open positions are closed and no new entries are taken. This is the ultimate risk control mechanism.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 15-20% · <span className="text-cyan-400">Balanced:</span> 25% · <span className="text-emerald-400">Aggressive:</span> 30-40%</div><div className="mt-1 text-slate-500">Setting this &gt; 40% defeats the purpose. Most professional strategies target 20-25% as the maximum tolerable drawdown.</div></div>
         } value={`${(s.maxDrawdownCap * 100).toFixed(0)}%`}>
           <SliderInput value={s.maxDrawdownCap * 100} onChange={v => updStop({ maxDrawdownCap: v / 100 })} min={5} max={60} step={1} suffix="%" decimals={0} />
         </ParamRow>
-        <ParamRow label="Position Cap" tooltip={
+        <ParamRow label="Position Cap" brief={<div>Even if Kelly calculation suggests a larger position, this cap limits maximum exposure.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Maximum Position Size as % of Portfolio</div><div>Even if Kelly calculation suggests a larger position, this cap limits maximum exposure to any single instrument.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 10-15% · <span className="text-cyan-400">Balanced:</span> 20-25% · <span className="text-emerald-400">Aggressive:</span> 30-50%</div><div className="mt-1 text-slate-500">Single positions &gt; 25% create concentrated risk. Warren Buffett's rule: never risk more than 2% on one idea.</div></div>
         } value={`${(s.positionCap * 100).toFixed(0)}%`}>
           <SliderInput value={s.positionCap * 100} onChange={v => updStop({ positionCap: v / 100 })} min={5} max={60} step={1} suffix="%" decimals={0} />
@@ -736,7 +771,7 @@ function RiskTab({ config, onChange }: RiskTabProps) {
       {/* Kelly */}
       <SectionHeader title="Kelly Criterion Sizing" subtitle="Mathematically optimal position sizing based on win rate and win/loss ratio" />
       <div className="space-y-1">
-        <ParamRow label="Kelly Mode" tooltip={
+        <ParamRow label="Kelly Mode" brief={<div>Kelly criterion calculates the optimal fraction of capital to risk based on win rate and win/loss ratio.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Kelly Criterion Position Sizing Mode</div><div>The Kelly criterion calculates the optimal fraction of capital to risk based on your historical win rate and average win/loss ratio: K = W - (1-W)/R</div><div><span className="text-amber-400">Full Kelly:</span> 100% of mathematically optimal fraction. High edge, high variance — expect 30-50% drawdowns even with positive edge.</div><div><span className="text-cyan-400">Half Kelly:</span> 50% of Kelly. Recommended for most traders — good balance of growth and risk control.</div><div><span className="text-emerald-400">Quarter Kelly:</span> 25% of Kelly. Very conservative — appropriate for regulated funds or retirement accounts.</div><div><span className="text-slate-400">Fixed:</span> Ignore Kelly — use the fixed position size parameter regardless of edge.</div><div className="mt-1 text-slate-500">Professional tip: Even with a positive edge, Full Kelly generates extreme volatility. Most practitioners use 1/4 to 1/2 Kelly.</div></div>
         } value="">
           <SelectInput
@@ -751,13 +786,13 @@ function RiskTab({ config, onChange }: RiskTabProps) {
           />
         </ParamRow>
         {p.kellyMode === 'fixed' && (
-          <ParamRow label="Fixed Position Size" tooltip={
+          <ParamRow label="Fixed Position Size" brief={<div>Used when Kelly Mode = 'Fixed'. Ignores Kelly calculation entirely.</div>} tooltip={
             <div><div className="font-semibold text-cyan-400 mb-1">Fixed Position Size %</div><div>Used when Kelly Mode = 'Fixed'. Ignores Kelly calculation entirely and uses this static % of capital per trade.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 5-10% · <span className="text-emerald-400">Active:</span> 10-20%</div></div>
           } value={`${(p.fixedPositionSize * 100).toFixed(0)}%`}>
             <SliderInput value={p.fixedPositionSize * 100} onChange={v => updPos({ fixedPositionSize: v / 100 })} min={1} max={50} step={1} suffix="%" decimals={0} />
           </ParamRow>
         )}
-        <ParamRow label="Max Kelly Fraction" tooltip={
+        <ParamRow label="Max Kelly Fraction" brief={<div>Prevents over-concentration from high-confidence signals.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Maximum Kelly Fraction to Ever Apply</div><div>Prevents over-concentration from high-confidence signals. Even if Kelly calculation suggests 80% of capital for a "perfect" signal, this cap limits it.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 10-25% · <span className="text-cyan-400">Balanced:</span> 25-35% · <span className="text-emerald-400">Aggressive:</span> 40-50%</div><div className="mt-1 text-slate-500">A 25% max Kelly fraction with Half Kelly mode means at most 12.5% of capital per trade — already significant concentration.</div></div>
         } value={`${(p.maxKellyFraction * 100).toFixed(0)}%`}>
           <SliderInput value={p.maxKellyFraction * 100} onChange={v => updPos({ maxKellyFraction: v / 100 })} min={5} max={100} step={1} suffix="%" decimals={0} />
@@ -785,7 +820,7 @@ function AdvancedTab({ config, onChange }: AdvancedTabProps) {
     <div className="space-y-4">
       <SectionHeader title="Options Market Filter" subtitle="Institutional-grade filter using options market structure (requires options data feed)" />
       <div className="space-y-1">
-        <ParamRow label="Use Options Filter" tooltip={
+        <ParamRow label="Use Options Filter" brief={<div>Enable options market structure filter for institutional-grade signals.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Enable Options Market Structure Filter</div><div>When enabled, additional options-market conditions (put/call ratio, gamma exposure, Vanna) must be satisfied before BUY signals are issued. These filters capture institutional flow dynamics invisible to price charts alone.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Requires:</span> Live or end-of-day options data feed (e.g. from CBOE, Tradier, or QuantConnect data)</div><div className="mt-1 text-slate-500">Expert-level filter. Disable if options data is unavailable or unreliable.</div></div>
         } value="">
           <Toggle value={o.useOptionsFilter} onChange={v => updOpt({ useOptionsFilter: v })} />
@@ -793,27 +828,27 @@ function AdvancedTab({ config, onChange }: AdvancedTabProps) {
 
         {o.useOptionsFilter && (
           <>
-            <ParamRow label="Require Call Wall Clearance" tooltip={
+            <ParamRow label="Require Call Wall Clearance" brief={<div>Call walls act as gravitational ceilings. Price above a call wall tends to continue upward.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Require Price Above Call Strike Wall</div><div>Call walls are clusters of call open interest at specific strikes — they act as gravitational ceilings. Price above a call wall tends to continue upward as dealers must hedge rising prices by buying stock. Requiring clearance means only buying when price has cleared this ceiling.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> ON — wait for price to clear major call walls</div><div className="text-slate-500 mt-1">Only active when Options Filter is enabled.</div></div>
             } value="">
               <Toggle value={o.requireCallWallClearance} onChange={v => updOpt({ requireCallWallClearance: v })} />
             </ParamRow>
-            <ParamRow label="Require Put Wall Clearance" tooltip={
+            <ParamRow label="Require Put Wall Clearance" brief={<div>Put walls act as support floors. Price above a put wall has strong support beneath it.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Require Price Above Put Strike Wall</div><div>Put walls (clusters of put OI) act as support floors — dealers must sell stock as price falls toward these levels, creating a natural floor. Price above a put wall has strong support beneath it.</div><div className="mt-1 text-slate-500">Only active when Options Filter is enabled.</div></div>
             } value="">
               <Toggle value={o.requirePutWallClearance} onChange={v => updOpt({ requirePutWallClearance: v })} />
             </ParamRow>
-            <ParamRow label="Max Put/Call Ratio" tooltip={
+            <ParamRow label="Max Put/Call Ratio" brief={<div>P/C ratio = total put OI / total call OI. High P/C indicates hedging activity.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Maximum Put/Call Ratio for BUY Signal</div><div>P/C ratio = total put OI / total call OI. High P/C (&gt;1) indicates hedging activity (bearish). Low P/C (&lt;0.7) indicates speculative call buying (bullish).</div><div className="mt-2 text-slate-400">&lt;0.5: Very bullish · 0.5-1.0: Neutral · &gt;1.0: Bearish (reject signal) · 2.0: Extremely bearish</div><div className="mt-1 text-slate-500">Setting max too high disables this filter effectively. Set to 0.5-0.7 for aggressive bearish filtering.</div></div>
             } value={o.maxPutCallRatio === Infinity ? '∞' : o.maxPutCallRatio.toFixed(1)}>
               <SliderInput value={Math.min(o.maxPutCallRatio === Infinity ? 3 : o.maxPutCallRatio, 3)} onChange={v => updOpt({ maxPutCallRatio: v })} min={0.1} max={3} step={0.1} suffix="" decimals={1} />
             </ParamRow>
-            <ParamRow label="Min Gamma Exposure" tooltip={
+            <ParamRow label="Min Gamma Exposure" brief={<div>Positive GEX means dealers must buy stock as price rises (bullish).</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Minimum Gamma Exposure (GEX) for BUY Signal</div><div>GEX = sum(gamma × open_interest × contract_multiplier). Positive GEX means dealers must buy stock as price rises (amplifies upward moves — bullish). Negative GEX amplifies downward moves.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 0 to +∞ (only buy when dealers are long gamma) · <span className="text-emerald-400">Relaxed:</span> Allow negative GEX entries</div><div className="mt-1 text-slate-500">Set to -Infinity to disable this filter. Requires live options Greeks data.</div></div>
             } value={o.minGammaExposure === -Infinity ? '−∞' : o.minGammaExposure.toFixed(0)}>
               <NumberInput value={o.minGammaExposure === -Infinity ? 0 : o.minGammaExposure} onChange={v => updOpt({ minGammaExposure: v })} min={-10000} max={10000} step={100} />
             </ParamRow>
-            <ParamRow label="Require Positive Vanna" tooltip={
+            <ParamRow label="Require Positive Vanna" brief={<div>Positive Vanna means delta increases as IV increases (good for upward moves).</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Require Vanna &gt; 0 for BUY Signal</div><div>Vanna = ∂Delta/∂IV = ∂Vega/∂Spot — measures how delta changes with volatility. Positive Vanna means delta increases as IV increases (good: upward moves bring more buying pressure from dealers hedging their options books).</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> ON — require positive Vanna</div><div className="mt-1 text-slate-500">Expert-level filter. Requires options Greeks data (Bloomberg, RiskMetrics, or similar).</div></div>
             } value="">
               <Toggle value={o.requirePositiveVanna} onChange={v => updOpt({ requirePositiveVanna: v })} />
@@ -826,7 +861,7 @@ function AdvancedTab({ config, onChange }: AdvancedTabProps) {
 
       <SectionHeader title="Market Microstructure Filter" subtitle="Order flow and tape-reading filters (requires Level 2 / time-of-sale data)" />
       <div className="space-y-1">
-        <ParamRow label="Use Microstructure Filter" tooltip={
+        <ParamRow label="Use Microstructure Filter" brief={<div>Enable order imbalance and delta conditions before BUY signals are issued.</div>} tooltip={
           <div><div className="font-semibold text-cyan-400 mb-1">Enable Market Microstructure Filter</div><div>When enabled, order imbalance, delta, and dealer hedging bias conditions must be met before BUY signals are issued. These filters read the "tape" — actual order flow — to gauge institutional positioning.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Requires:</span> Real-time Level 2 / time-of-sale data (e.g. from a premium data provider like Tick Data LLC, Binance, or a prop firm feed)</div><div className="mt-1 text-slate-500">Expert-level filter. Most retail traders use price/volume data only. Enable only if you have reliable real-time order flow data.</div></div>
         } value="">
           <Toggle value={m.useMicrostructureFilter} onChange={v => updMicro({ useMicrostructureFilter: v })} />
@@ -834,17 +869,17 @@ function AdvancedTab({ config, onChange }: AdvancedTabProps) {
 
         {m.useMicrostructureFilter && (
           <>
-            <ParamRow label="Max Order Imbalance" tooltip={
+            <ParamRow label="Max Order Imbalance" brief={<div>Imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume). +0.3 = bid side has 30% more volume.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Maximum Order Imbalance Ratio to Allow BUY</div><div>Imbalance = (bid_volume - ask_volume) / (bid_volume + ask_volume). +0.3 = bid side has 30% more volume (bullish). Signals are rejected if imbalance &lt; -maxOrderImbalance (excessive selling pressure).</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 0.1-0.2 (only buy on strong bid-side volume) · <span className="text-emerald-400">Balanced:</span> 0.3-0.4</div><div className="mt-1 text-slate-500">This filters out entries during periods of heavy selling pressure even if all other indicators are bullish.</div></div>
             } value={m.maxOrderImbalance.toFixed(2)}>
               <SliderInput value={m.maxOrderImbalance} onChange={v => updMicro({ maxOrderImbalance: v })} min={0.05} max={1.0} step={0.05} suffix="" decimals={2} />
             </ParamRow>
-            <ParamRow label="Require Positive Delta" tooltip={
+            <ParamRow label="Require Positive Delta" brief={<div>Positive cumulative delta means buyers are more aggressive — a key institutional flow indicator.</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Require Cumulative Delta &gt; 0</div><div>Delta = volume traded at bid (aggressive selling) vs. ask (aggressive buying). Positive cumulative delta over the lookback period means buyers are more aggressive — a key institutional flow indicator.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> ON — requires tape to confirm buying pressure</div><div className="mt-1 text-slate-500">Even if price is rising, if delta is negative (more volume hitting bids), the move may be unsustained.</div></div>
             } value="">
               <Toggle value={m.requirePositiveDelta} onChange={v => updMicro({ requirePositiveDelta: v })} />
             </ParamRow>
-            <ParamRow label="Max Dealer Hedging Bias" tooltip={
+            <ParamRow label="Max Dealer Hedging Bias" brief={<div>Dealer hedging bias = estimated gamma-related hedging flow (shares/day × 1000).</div>} tooltip={
               <div><div className="font-semibold text-cyan-400 mb-1">Maximum Dealer Hedging Bias for BUY Signal</div><div>Dealer hedging bias = estimated gamma-related hedging flow (shares/day × 1000). High positive bias (&gt; threshold) means dealers are long gamma and will buy on upticks — a floor. High negative bias = dealers short gamma, will sell on upticks — a ceiling.</div><div className="mt-2 text-slate-400"><span className="text-amber-400">Conservative:</span> 20-50 (only buy when dealers are heavily long gamma) · <span className="text-emerald-400">Balanced:</span> 100-200</div><div className="mt-1 text-slate-500">Units: thousands of shares/day. A bias of 100 = dealers hedging 100,000 shares/day in one direction.</div></div>
             } value={`${m.maxDealerHedgingBias}`}>
               <SliderInput value={m.maxDealerHedgingBias} onChange={v => updMicro({ maxDealerHedgingBias: v })} min={-100} max={300} step={5} suffix="" decimals={0} />

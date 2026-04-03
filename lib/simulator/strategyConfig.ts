@@ -431,10 +431,19 @@ export interface TransactionCostConfig {
    * @default 11
    */
   txCostBpsPerSide: number
+
+  /**
+   * Entry slippage in basis points (bps). Applied to next-open price at entry.
+   * Models the difference between signal price and actual fill price due to
+   * market impact, latency, and bid-ask spread.
+   * @default 2
+   */
+  entrySlippageBps: number
 }
 
 export const DEFAULT_TRANSACTION_COST_CONFIG: TransactionCostConfig = {
   txCostBpsPerSide: 11,
+  entrySlippageBps: 2,
 }
 
 // ─── 6. Strategy Mode ─────────────────────────────────────────────────────────

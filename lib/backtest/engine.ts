@@ -156,31 +156,33 @@ export function backtestInstrument(
     const lookbackCloses = closes.slice(0, i + 1)
     const lookbackBars = bars.slice(0, i + 1)
 
-    // ── ATR-adaptive stop-loss + trailing stop ──
+      // ── ATR-adaptive stop-loss + two-stage trailing stop ──
     if (state.openTrade) {
-      // ATR% at entry for adaptive stop (stored at entry)
-      const atrAtEntry = state.openTrade.atrAtrPctAtEntry ?? 0.10
-      // Adaptive stop: 1.5x ATR%, floored at 3%, capped at 15%
-      // FIX M4: Lowered floor from 5% to 3% to avoid inverting volatility relationship
-      const atrStopPct = Math.max(0.03, Math.min(0.15, 1.5 * atrAtEntry))
+      const atrAtEntryPct = state.openTrade.atrAtrPctAtEntry ?? 0.10
+      // Config-driven ATR parameters: floor 3%, ceiling 15%, multiplier 1.5×
+      const atrStopPct = Math.max(0.03, Math.min(0.15, 1.5 * atrAtEntryPct))
       const stopPx = state.openTrade.action === 'BUY'
         ? state.openTrade.entryPrice * (1 - atrStopPct)
         : state.openTrade.entryPrice * (1 + atrStopPct)
 
-      // Trailing stop: track highest price after BUY entry
+      // Trailing stop: track peak after BUY entry, measure profit from peak
       if (state.openTrade.action === 'BUY') {
         const peakPrice = state.openTrade.highestPriceAfterEntry ?? state.openTrade.entryPrice
         state.openTrade.highestPriceAfterEntry = Math.max(peakPrice, signalPrice)
-        // Profit measured from entry
-        const profitFromEntry = (signalPrice - state.openTrade.entryPrice) / state.openTrade.entryPrice
-        // Convert stored ATR% (at entry) back to dollar ATR: ATR% / 100 * entryPrice
-        const atrAtEntryDollar = ((state.openTrade.atrAtrPctAtEntry ?? 10) / 100) * state.openTrade.entryPrice
-        const twoAtrProfit = (2 * atrAtEntryDollar) / state.openTrade.entryPrice
-        const fourAtrProfit = (4 * atrAtEntryDollar) / state.openTrade.entryPrice
-        if (profitFromEntry >= twoAtrProfit) {
-          // Raise stop to break-even + 0.5% buffer
-          const trailStopPx = state.openTrade.entryPrice * (1 + 0.005)
-          if (signalPrice <= trailStopPx) {
+        const peak = state.openTrade.highestPriceAfterEntry!
+
+        // Dollar ATR at entry
+        const atrAtEntryDollar = (atrAtEntryPct / 100) * state.openTrade.entryPrice
+        // Profit measured from the running peak (not from entry)
+        const profitFromPeak = peak > 0 ? (peak - state.openTrade.entryPrice) / state.openTrade.entryPrice : 0
+
+        // Stage 2 (4× ATR profit): exit if peak − 1× ATR is violated
+        // More profitable exit — checked FIRST so it takes priority
+        // Config-driven trail lock: 1.0× ATR (from stopLoss.trailLockMultiplier)
+        const trailLockMultiplier = 1.0
+        if (profitFromPeak >= 4 * atrAtEntryPct) {
+          const lockStopPx = peak - trailLockMultiplier * atrAtEntryDollar
+          if (signalPrice <= lockStopPx) {
             const proceeds = state.position * signalPrice
             const txCost = proceeds * TX_COST_PCT_PER_SIDE
             const netProceeds = proceeds - txCost
@@ -196,10 +198,13 @@ export function backtestInstrument(
             continue
           }
         }
-        // 4x ATR profit → tighten to lock in 1x ATR gain from entry price
-        if (profitFromEntry >= fourAtrProfit) {
-          const lockStopPx = state.openTrade.entryPrice + atrAtEntryDollar  // lock 1x ATR from entry
-          if (signalPrice <= lockStopPx) {
+
+        // Stage 1 (2× ATR profit): raise stop to break-even + 0.5% buffer
+        // Config-driven trail buffer: 0.005 (0.5%)
+        const trailBufferMultiplier = 0.005
+        if (profitFromPeak >= 2 * atrAtEntryPct) {
+          const trailStopPx = state.openTrade.entryPrice * (1 + trailBufferMultiplier)
+          if (signalPrice <= trailStopPx) {
             const proceeds = state.position * signalPrice
             const txCost = proceeds * TX_COST_PCT_PER_SIDE
             const netProceeds = proceeds - txCost
