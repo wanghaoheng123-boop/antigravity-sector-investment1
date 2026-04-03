@@ -23,7 +23,19 @@ export async function GET(request: NextRequest) {
         const u = decodeURIComponent(t.trim()).toUpperCase()
         return u === 'VIX' ? '^VIX' : u
       })
-    : [...SECTORS.map((s) => s.etf), 'SPY', 'QQQ']
+    : [
+        ...SECTORS.map((s) => s.etf),
+        'SPY', 'QQQ', 'DIA',  // US Indices
+        'IWM',                  // Russell 2000
+        'IWO',                  // Russell 2000 Growth
+        'VIX', '^VIX',          // Volatility
+        'TLT', 'HYG', 'LQD',   // Bonds
+        'GLD', 'SLV', 'USO',    // Commodities (spot proxies)
+        'DBC', 'PDBC',          // Broad Commodities
+        'UNG', 'BNO',           // Energy
+        'CPER', 'DBB',          // Metals
+        'WEAT', 'CORN', 'SOYB', // Agriculture
+      ]
 
   try {
     const [results, bbMap] = await Promise.all([
