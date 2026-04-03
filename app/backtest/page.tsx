@@ -12,11 +12,14 @@ import {
   STRATEGY_PRESETS,
   applyStrategyPreset,
   type PresetName,
+  type StrategyConfig,
 } from '@/lib/simulator/strategyConfig'
+import StrategyBuilder from '@/components/simulator/StrategyBuilder'
 
 interface BacktestData {
   runId: string
   computedAt: string
+  dataSource: 'local' | 'live'
   instruments: { ticker: string; sector: string; candles: number }[]
   results: BacktestResult[]
   portfolio: {
@@ -200,66 +203,30 @@ export default function BacktestPage() {
             </div>
           </div>
 
-          {/* Strategy Configuration Panel */}
+          {/* Full Strategy Builder Panel */}
           {showConfig && (
-            <div className="mt-4 border border-slate-800 rounded-xl p-4 bg-slate-900/40 space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-bold text-white uppercase tracking-wider text-slate-400">Strategy Configuration</h3>
-              </div>
-
-              {/* Preset selector */}
-              <div className="flex flex-wrap gap-2">
-                {STRATEGY_PRESETS.map(preset => (
-                  <button
-                    key={preset.name}
-                    onClick={() => {
-                      setBacktestConfig(applyStrategyPreset(preset.name as PresetName))
-                    }}
-                    className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded-lg border border-slate-700 hover:bg-slate-700 hover:border-cyan-500/40 transition-colors"
-                  >
-                    {preset.name}
-                  </button>
-                ))}
-              </div>
-
-              {/* Config summary */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[11px] text-slate-500">
-                <div>
-                  <span className="text-slate-400">Strategy Mode:</span>{' '}
-                  {backtestConfig.strategyMode.strategyMode === 'regime' ? 'Regime Dip-Buy' :
-                   backtestConfig.strategyMode.strategyMode === 'momentum' ? 'Momentum Breakout' :
-                   backtestConfig.strategyMode.strategyMode === 'mean_reversion' ? 'Mean Reversion' : 'Breakout'}
-                </div>
-                <div>
-                  <span className="text-slate-400">Kelly:</span>{' '}
-                  {backtestConfig.positionSizing.kellyMode === 'half' ? 'Half-Kelly' :
-                   backtestConfig.positionSizing.kellyMode === 'quarter' ? 'Quarter-Kelly' :
-                   backtestConfig.positionSizing.kellyMode === 'full' ? 'Full Kelly' : 'Fixed'}
-                </div>
-                <div>
-                  <span className="text-slate-400">Stop Loss:</span> ATR {backtestConfig.stopLoss.stopLossAtrMultiplier}×, {(backtestConfig.stopLoss.stopLossFloor * 100).toFixed(0)}–{(backtestConfig.stopLoss.stopLossCeiling * 100).toFixed(0)}%
-                </div>
-                <div>
-                  <span className="text-slate-400">Lookback:</span> {backtestConfig.backtestPeriod.lookbackYears} years
-                </div>
-              </div>
-
-              {/* Run Backtest button */}
-              <div className="flex gap-3 pt-2">
-                <button
-                  onClick={async () => {
-                    setBacktestRunning(true)
+            <div className="mt-4 border border-slate-800 rounded-xl bg-slate-950/80 overflow-hidden">
+              <StrategyBuilder
+                initialConfig={backtestConfig}
+                isRunning={backtestRunning}
+                onRun={(cfg) => {
+                  setBacktestConfig(cfg)
+                  // Immediately run backtest with new config
+                  setBacktestRunning(true)
+                  setError(null)
+                  const tickersParam = selectedTickers.length > 0 ? selectedTickers.join(',') : undefined
+                  const url = tickersParam
+                    ? apiUrl(`/api/backtest?tickers=${tickersParam}`)
+                    : apiUrl('/api/backtest')
+                  void (async () => {
                     try {
-                      const tickersParam = selectedTickers.length > 0 ? selectedTickers.join(',') : undefined
-                      const url = tickersParam
-                        ? apiUrl(`/api/backtest?tickers=${tickersParam}`)
-                        : apiUrl('/api/backtest')
                       const res = await fetch(url, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
-                          config: backtestConfig,
+                          config: cfg,
                           tickers: selectedTickers.length > 0 ? selectedTickers : undefined,
+                          lookbackDays: cfg.backtestPeriod.lookbackYears * 252,
                         }),
                       })
                       if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -270,13 +237,10 @@ export default function BacktestPage() {
                     } finally {
                       setBacktestRunning(false)
                     }
-                  }}
-                  disabled={backtestRunning}
-                  className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500 text-white text-xs font-bold rounded-lg transition-all disabled:from-slate-700 disabled:to-slate-700 disabled:text-slate-500"
-                >
-                  {backtestRunning ? 'Running…' : 'Run Backtest'}
-                </button>
-              </div>
+                  })()
+                }}
+                onReset={() => setBacktestConfig(DEFAULT_STRATEGY_CONFIG)}
+              />
             </div>
           )}
 
@@ -377,13 +341,10 @@ export default function BacktestPage() {
 
           {/* Strategy info bar */}
           <div className="flex flex-wrap gap-4 text-[11px] text-slate-500 border border-slate-800 rounded-lg px-4 py-2 bg-slate-900/40">
-            <span><span className="text-slate-400">Strategy:</span> 200EMA Deviation Regime + RSI/MACD/ATR%/BB% Confirmations</span>
+            <span><span className="text-slate-400">Strategy:</span> Configurable — Regime / Momentum / Mean Reversion / Breakout</span>
             <span><span className="text-slate-400">Capital:</span> $100,000 per instrument</span>
-            <span><span className="text-slate-400">Stop Loss:</span> ATR-adaptive (1.5× ATR, 3–15%)</span>
-            <span><span className="text-slate-400">Trailing Stop:</span> 2× ATR → break-even, 4× ATR → 1× ATR lock</span>
-            <span><span className="text-slate-400">Kelly:</span> Half-Kelly sizing (max 25%)</span>
-            <span><span className="text-slate-400">Confidence threshold:</span> 55%</span>
-            <span><span className="text-slate-400">Max Portfolio DD:</span> 25% circuit breaker</span>
+            <span><span className="text-slate-400">Data:</span> {data?.dataSource === 'live' ? <span className="text-amber-400">Live Yahoo Finance</span> : <span className="text-emerald-400">Local 5Y History</span>}</span>
+            <span><span className="text-slate-400">Instruments:</span> {selectedTickers.length > 0 ? `${selectedTickers.length} selected` : 'All 56 default'}</span>
           </div>
         </div>
       </div>
