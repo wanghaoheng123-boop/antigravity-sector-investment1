@@ -29,9 +29,12 @@ interface SectorBrief {
 async function getAllBriefs(): Promise<SectorBrief[]> {
   const results = await Promise.allSettled(
     SECTORS.map(async s => {
+      // Use Vercel deployment URL or fallback to production alias
       const baseUrl = process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
-        : 'http://localhost:3000'
+        : process.env.VERCEL_DEPLOYMENT_URL
+        ? `https://${process.env.VERCEL_DEPLOYMENT_URL}`
+        : 'https://quantan-sector-investment.vercel.app'
       const res = await fetch(
         `${baseUrl}/api/briefs/${encodeURIComponent(s.slug)}`,
         { cache: 'no-store' }
