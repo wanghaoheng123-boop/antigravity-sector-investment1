@@ -50,8 +50,11 @@ export default function RootLayout({
             <div className="max-w-7xl mx-auto px-4 min-h-14 flex flex-wrap items-center justify-between gap-y-2 py-2">
               <div className="flex items-center gap-4">
                 <a href="/" className="flex items-center gap-2.5">
+                  <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center text-xs font-bold">
+                    QU
+                  </div>
                   <span className="font-bold text-white text-sm">QUANTAN</span>
-                  <span className="text-slate-500 text-sm hidden sm:block">/ Market Intelligence</span>
+                  <span className="text-slate-500 text-sm hidden sm:block">/ Sector Intelligence</span>
                 </a>
                 <Breadcrumbs />
               </div>

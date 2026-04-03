@@ -105,33 +105,14 @@ export default function HomePage() {
         <div className="text-center space-y-4 py-6">
           <div className="inline-flex items-center gap-2 bg-blue-900/30 border border-blue-500/30 rounded-full px-4 py-1.5 text-xs text-blue-400 mb-2">
             <span className="w-1.5 h-1.5 bg-blue-400 rounded-full animate-pulse" />
-            {(() => {
-              const now = new Date()
-              const hour = now.getHours()
-              const isMarketHours = hour >= 9 && hour < 16
-              const isPreMarket = hour >= 4 && hour < 9
-              const marketLabel = isMarketHours ? 'MARKET OPEN' : isPreMarket ? 'PRE-MARKET' : 'AFTER-HOURS'
-              const latestQuote = quotes['SPY']?.quoteTime
-              const quoteDate = latestQuote ? new Date(latestQuote) : null
-              const dateStr = quoteDate ? quoteDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : null
-              return (
-                <>
-                  <span className="font-semibold tracking-wide">{marketLabel}</span>
-                  {dateStr && <span className="text-blue-600">· {dateStr}</span>}
-                  {lastUpdate && <span className="text-blue-600">· Refreshed {lastUpdate.toLocaleTimeString()}</span>}
-                </>
-              )
-            })()}
+            Live · {lastUpdate ? `Updated ${lastUpdate.toLocaleTimeString()}` : 'Connecting…'}
             <span className="ml-1 text-blue-600 font-mono">↻ {countdown}s</span>
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold tracking-tight">
             <span className="gradient-text">Sector Intelligence</span>
           </h1>
           <p className="text-slate-400 text-lg max-w-xl mx-auto leading-relaxed">
-            <strong className="text-slate-300 font-medium">Yahoo Finance quotes</strong> for sector ETFs refresh every 15s (same vendor print between sessions; weekend/holiday = last session). Top cards show{' '}
-            <strong className="text-slate-300 font-medium">session direction vs prior close</strong> only — not trade recommendations. Sparklines use prior close → last price (two real points). Dark pool blocks remain{' '}
-            <strong className="text-amber-200/90 font-medium">illustrative</strong>. Use{' '}
-            <strong className="text-slate-300 font-medium">Quant Lab</strong> for fundamentals (Yahoo + stated models).
+            Live sector & commodity ETF quotes with charts; desk-style monitor; simulated dark pool / signal cards for workflow demos — verify all data with your vendor feeds.
           </p>
         </div>
 
@@ -183,10 +164,10 @@ export default function HomePage() {
         {/* Market Overview Stats */}
         <section className="grid grid-cols-2 sm:grid-cols-4 gap-4">
           {[
-            { label: 'Sectors up (session)', value: signals.filter((s) => s.direction === 'BUY').length, of: 11, color: '#00d084' },
-            { label: 'Sectors down (session)', value: signals.filter((s) => s.direction === 'SELL').length, of: 11, color: '#ff4757' },
-            { label: 'Neutral (|Δ| ≤ 0.01%)', value: signals.filter((s) => s.direction === 'HOLD').length, of: 11, color: '#eab308' },
-            { label: 'Median |move|', value: `${medianAbsMove.toFixed(2)}%`, color: '#3b82f6' },
+            { label: 'Sectors Bullish', value: signals.filter((s) => s.direction === 'BUY').length, of: 11, color: '#00d084' },
+            { label: 'Sectors Bearish', value: signals.filter((s) => s.direction === 'SELL').length, of: 11, color: '#ff4757' },
+            { label: 'Neutral', value: signals.filter((s) => s.direction === 'HOLD').length, of: 11, color: '#eab308' },
+            { label: 'Avg Confidence', value: `${Math.round(signals.reduce((a, b) => a + b.confidence, 0) / (signals.length || 1))}%`, color: '#3b82f6', noOf: true },
           ].map((stat, i) => (
             <div key={i} className="rounded-xl border border-slate-800 p-4 bg-slate-900/40">
               <div className="text-2xl font-bold font-mono" style={{ color: stat.color }}>
@@ -377,7 +358,7 @@ export default function HomePage() {
             {[
               { icon: '📊', title: 'K-Line Chart', desc: 'Candlestick charts with EMA overlays, volume, dark pool print markers, and news event pins.' },
               { icon: '🔵', title: 'Dark Pool Intelligence', desc: 'Block prints, sweep orders, institutional flow sentiment, and VWAP premium/discount analysis.' },
-              { icon: '⚡', title: 'Session & Quant Lab', desc: 'Markets page: Yahoo session change vs prior close. Stock pages: Quant Lab for fundamentals, DCF sliders, and mechanical bands from Yahoo data.' },
+              { icon: '⚡', title: 'Price Signals', desc: 'Entry, stop loss, and target levels with confidence scores and risk/reward ratios.' },
             ].map((item, i) => (
               <div key={i} className="text-center space-y-2">
                 <div className="text-2xl">{item.icon}</div>

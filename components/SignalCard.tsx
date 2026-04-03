@@ -47,7 +47,7 @@ export default function SignalCard({ signal, color, compact = false }: SignalCar
 
   if (compact) {
     return (
-      <div className={`rounded-xl p-4 border ${config.bg} ${config.border} hover:brightness-110 transition-all`}>
+      <div className={`rounded-xl p-4 border ${config.bg} ${config.border} hover:brightness-110 transition-all animate-card-enter`}>
         <div className="flex items-center justify-between mb-2">
           <span className={`text-xs font-bold ${config.text} tracking-widest`}>{headline}</span>
           <span className="text-xs text-slate-400 font-mono">{signal.etf}</span>
@@ -107,8 +107,6 @@ export default function SignalCard({ signal, color, compact = false }: SignalCar
               className="animate-confidence-ring"
               style={{
                 filter: `drop-shadow(0 0 4px ${color})`,
-                // Ring animation ends at this offset; without it, keyframes fallback 150.79
-                // hides the full ring after forwards fill.
                 ['--ring-offset' as string]: `${2 * Math.PI * 24 * (1 - signal.confidence / 100)}`,
               }}
             />
