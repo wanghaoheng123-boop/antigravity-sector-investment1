@@ -39,6 +39,8 @@ async function runBacktest(filterTickers?: string[]): Promise<{
     totalTrades: number
     totalInstruments: number
     sectorSummary: Record<string, { totalReturn: number; annReturn: number; tickers: string[] }>
+    initialCapital: number
+    finalCapital: number
   }
 }> {
   const instruments: { ticker: string; sector: string; candles: number }[] = []

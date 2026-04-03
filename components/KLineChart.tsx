@@ -271,6 +271,7 @@ export default function KLineChart({
   showRSI = true,
   indicators: indicatorsIn,
   onIndicatorsChange,
+  onTimeframeChange,
 }: KLineChartProps) {
   const indicatorsProp = useMemo(
     () => ({ ...DEFAULT_INDICATORS, ...indicatorsIn }),
@@ -374,18 +375,16 @@ export default function KLineChart({
           vertLine: {
             color: '#64748b',
             labelBackgroundColor: '#0f172a',
-            lineStyle: LineStyle.Dashed,
-            lineWidth: 1,
+            style: LineStyle.Dashed,
+            width: 1,
             labelVisible: true,
-            showLabelOnlyOnLastLine: true,
           },
           horzLine: {
             color: '#64748b',
             labelBackgroundColor: '#0f172a',
-            lineStyle: LineStyle.Dashed,
-            lineWidth: 1,
+            style: LineStyle.Dashed,
+            width: 1,
             labelVisible: true,
-            showLabelOnlyOnLastLine: true,
           },
         },
         rightPriceScale: { borderColor: '#1e1e2e' },
@@ -396,12 +395,14 @@ export default function KLineChart({
 
       // Subscribe to crosshair move for OHLCV tooltip
       main.subscribeCrosshairMove((param) => {
-        if (!param.time || !param.seriesData.size) {
+        if (!param.time || !param.seriesData.size || !candleRef.current || !volumeRef.current) {
           setCrosshairData(null)
           return
         }
-        const candleData = param.seriesData.get(candleRef.current)
-        const volumeData = param.seriesData.get(volumeRef.current)
+        const candleSeries = candleRef.current
+        const volumeSeries = volumeRef.current
+        const candleData = param.seriesData.get(candleSeries)
+        const volumeData = param.seriesData.get(volumeSeries)
         if (candleData && 'open' in candleData) {
           setCrosshairData({
             time: String(param.time),

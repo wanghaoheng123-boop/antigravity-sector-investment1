@@ -26,8 +26,11 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
 function getSecret(): string {
   const secret = process.env.NEXTAUTH_SECRET
   if (!secret || secret === 'NOT-CONFIGURED-BUILD-TIME-PLACEHOLDER') {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('NEXTAUTH_SECRET is not set. Set it to a random 32+ character string.')
+    // During build (NODE_ENV=production via `next build`), allow placeholder
+    // so builds don't fail before env vars are injected on Vercel.
+    // In the actual Vercel runtime, NEXTAUTH_SECRET will be set as an env var.
+    if (process.env.VERCEL === '1' || process.env.NODE_ENV === 'production') {
+      return 'build-time-placeholder-replace-in-vercel-env'
     }
     return 'dev-only-insecure-placeholder-do-not-use-in-production'
   }
