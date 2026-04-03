@@ -1,359 +1,157 @@
-# QUANTAN v2.0 — Commercial Review Round 2 Findings
+# Findings: QUANTAN Comprehensive Review (4-Hour Sprint)
 
-## Executive Summary
+## Priority: P0 Issues Found
 
-This document consolidates findings from a comprehensive multi-disciplinary review covering **API security**, **authentication architecture**, **quantitative correctness** (previously completed), **UI/UX quality**, and **operational concerns**. All P0/P1 bugs from the first round have been fixed. This round identifies remaining issues that must be addressed before commercial launch.
+### P0-1: ATR Array Indexing Off-by-One (Look-Ahead Bias) — lib/backtest/signals.ts:79
+- The `atr()` function shifts all ATR values by +1 index position
+- `out[period] = avg` stores ATR for bars[period+1] instead of bars[period]
+- In backtest engine: `atrVals[i]` reads tomorrow's ATR instead of today's
+- Fix: change `out[period] = avg` → `out[period - 1] = avg` and fix loop index
+- Source: Quant Finance Review
 
----
+### P0-2: Raw Close Prices — No Split/Dividend Adjustment — scripts/fetchBacktestData.mjs:86-99
+- Uses unadjusted close prices from Yahoo. AAPL (Aug 2020 4:1), NVDA (3 splits since 2021)
+- Total return vs price return divergence corrupts backtest returns
+- Fix: Use `includeAdjustedClose=true` with split/dividend events
+- Source: Data Science Review
 
-## CRITICAL Issues (Must Fix Before Launch)
+### P0-3: Daily Returns Array Never Populated — lib/backtest/engine.ts:349
+- `dailyReturns` is never pushed to during backtest loop — empty array
+- Sharpe/Sortino ratios silently return null due to insufficient data
+- Fix: Push `currentEquity(state)` to `equityHistory` unconditionally every iteration
+- Source: Data Science Review
 
-### API Security
+### P0-4: BTC Absent from Live Signals — app/api/backtest/live/route.ts:134-208
+- `btcSignal()` is never called in GET handler — BTC excluded from live signals
+- Fix: Call `btcSignal()` and push result to instruments
+- Source: Data Science Review
 
-#### C1: ALL API Routes Are Public — No Authentication
-Every single API route in the application is unauthenticated:
-- `/api/backtest` — exposes institutional-grade strategy results and backtest performance
-- `/api/trading-agents/[ticker]` — exposes LLM agent analysis and trading signals
-- `/api/ma-deviation` — exposes proprietary regime classification data
-- `/api/bloomberg-bridge/health` — exposes internal infrastructure
-- `/api/backtest/live` — exposes live regime signals for all 56 instruments
+### P0-5: Live Signals Empty Catch — app/backtest/page.tsx:605-607
+- Silent failure gives no indication server error vs no data
+- Users may act on stale data thinking it's live
+- Fix: Set error state and display meaningful message
+- Source: Software Engineering Review
 
-**Impact:** Any user on the internet can access all data without authentication. A competitor could scrape all backtest results, trading signals, and regime data.
+### P0-6: RSI confLabels toFixed on NaN — lib/backtest/signals.ts:359-360
+- `rsiBullish` false → `rsi14` is NaN → `NaN.toFixed(1)` = "NaN" string in output
+- Fix: Guard with Number.isFinite check
+- Source: Software Engineering Review
 
-**Fix:** Add a simple bearer token check to all API routes:
-```typescript
-// In each route:
-const authHeader = request.headers.get('authorization')
-if (authHeader !== `Bearer ${process.env.API_SECRET}`) {
-  return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-}
-```
+### P0-7: Trailing Stop Uses Current ATR Not Entry ATR — lib/backtest/engine.ts:177-179
+- Comment says "FIX T12: use entry ATR" but code uses current ATR
+- Profit thresholds dynamically shift with volatility — not a real trailing stop
+- Fix: Use stored `atrAtrPctAtEntry`
+- Source: Quant Finance Review
 
----
-
-#### C2: POST /api/backtest Has No Auth — Enables DoS Attack
-Anyone can POST to `/api/backtest` to:
-1. Clear the 1-hour cache
-2. Force a full recompute of 56 backtest instruments (expensive CPU operation)
-
-**Impact:** An attacker can repeatedly POST to force constant recomputation, causing CPU exhaustion and potential billing spike on Vercel.
-
-**Fix:** Require API_SECRET bearer token on POST requests.
-
----
-
-#### C3: In-Memory Caches Are Serverless-Incompatible
-- `_chartCache` in `/api/chart/[ticker]` — module-level, non-durable
-- `cache` in `/api/backtest` — module-level, non-durable
-- 1-hour TTL only works within a single warm Lambda/container
-
-On Vercel serverless, each cold start gets a fresh process. Cached data is lost on cold start. This causes:
-- First user after cold start gets uncached (expensive) response
-- Multiple concurrent cold starts each recompute independently
-- Cache poisoning risk when warm instances coexist with cold ones
-
-**Fix:** Use Vercel KV (`@vercel/kv`) or Redis for durable caching:
-```typescript
-import { kv } from '@vercel/kv'
-const cached = await kv.get('backtest:full')
-if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data
-```
+### P0-8: Asymmetric Slippage Entry vs Exit — lib/backtest/engine.ts:271 vs 297
+- BUY entries: next-day open + 2bps slippage
+- SELL exits: same-day close, NO slippage
+- ~2bps systematic bias in favor of strategy unrealistically
+- Fix: Apply slippage to exits too
+- Source: Quant Finance Review
 
 ---
 
-#### C4: Ticker Input Validation Missing on All API Routes
-`/api/prices`, `/api/backtest`, `/api/chart/[ticker]`, `/api/darkpool/[ticker]` all accept ticker parameters without validation.
+## Priority: P1 Issues Found
 
-Example attack on `/api/backtest?tickers=AAPL,BTC,XYZ`:
-- Invalid tickers cause `loadStockHistory()` to return empty arrays
-- Empty arrays still go through the full backtest engine
-- With enough unique invalid tickers, this causes memory pressure
+### P1-1: EMA Initialization Seeds with values[0] Not SMA(period) — lib/backtest/signals.ts:15
+- Seed with `values[0]` instead of `SMA(first period bars)` — non-standard
+- Different from `KLineChart.tsx calcEMA` which uses correct SMA seed
+- Affects all downstream indicators using this EMA
+- Source: Mathematics Review
 
-**Fix:** Strict allowlist validation:
-```typescript
-const VALID_TICKER = /^[A-Z.^]{1,10}$/
-for (const t of tickers) {
-  if (!VALID_TICKER.test(t)) throw new Error('Invalid ticker')
-}
-```
+### P1-2: Live Route Hardcoded Confidence Threshold — app/api/backtest/live/route.ts:97
+- Hardcoded `55` instead of `DEFAULT_CONFIG.confidenceThreshold`
+- Silent divergence from backtest config if threshold changes
+- Fix: Import and use `DEFAULT_CONFIG.confidenceThreshold`
+- Source: Quant Finance Review
 
----
+### P1-3: Sharpe Ratio Mislabeled as Calmar — app/backtest/page.tsx:244
+- Shows `avgAnnReturn / maxDrawdown` labeled as "Sharpe Ratio"
+- Actual Sharpe uses volatility, not drawdown
+- Fix: Calculate true Sharpe or rename to "Return/DD Ratio"
+- Source: Mathematics + UI/UX Review
 
-#### C5: Bloomberg Bridge Secret Is Optional — Allows Unauthenticated Access
-If `BLOOMBERG_BRIDGE_SECRET` is set but the bridge server doesn't validate it, anyone can query the bridge.
+### P1-4: Portfolio Alpha Compares Incompatible Quantities — lib/backtest/engine.ts:544
+- `alpha = truePortfolioReturn - bnhAvg` where bnhAvg is equal-weighted avg
+- vs portfolio return from carry-forward combined equity
+- Not measuring same thing
+- Fix: Use actual B&H portfolio equity curve as benchmark
+- Source: Quant Finance Review
 
-**Fix:** Require the secret to be set and validate it on every request to the bridge:
-```typescript
-if (!process.env.BLOOMBERG_BRIDGE_SECRET) {
-  throw new Error('BLOOMBERG_BRIDGE_SECRET not configured')
-}
-```
+### P1-5: RSI Legend IIFE Recalculates O(n) Per Render — KLineChart.tsx:962-967
+- IIFE inside JSX computes RSI from scratch on every render/crosshair move
+- RSI already computed via calcRSI in data effect
+- Fix: Memoize last RSI value
+- Source: Software Engineering Review
 
----
+### P1-6: Canvas Doesn't Respond to Resize — EquityCurveChart.tsx:22-25
+- Only measures bounding rect once on mount
+- Fix: Add ResizeObserver
+- Source: Software Engineering Review
 
-#### C6: Raw Error Messages Sent to Clients on All API Routes
-Both `/api/backtest` and `/api/prices` forward raw error messages to clients:
-```typescript
-return NextResponse.json({ error: '...', message: e instanceof Error ? e.message : String(e) })
-```
-This can expose internal paths, library names, and infrastructure details.
-
-**Fix:** Log errors server-side, return sanitized message to client:
-```typescript
-console.error('[api/backtest] error:', e) // Full details server-side
-return NextResponse.json({ error: 'Backtest computation failed' }, { status: 500 })
-```
-
----
-
-### Authentication Architecture
-
-#### C7: No Middleware — All Routes Are Public by Default
-No `middleware.ts` exists. This means:
-- No route-level authentication enforcement
-- No way to protect specific pages
-- Auth is opt-in per page (not enforced)
-
-If you want a commercial product where some features require login (e.g., saved watchlists, personalized alerts), you need route protection.
-
-**Fix:** Create `middleware.ts`:
-```typescript
-export function middleware(request: NextRequest) {
-  const token = request.cookies.get('next-auth.session-token')
-  // Protect routes that require auth
-  if (request.nextUrl.pathname.startsWith('/dashboard')) {
-    if (!token) return NextResponse.redirect('/auth/signin')
-  }
-}
-```
+### P1-7: NEXTAUTH Secret Fallback to Placeholder — lib/auth.ts:28
+- Falls back to 'NOT-CONFIGURED-BUILD-TIME-PLACEHOLDER' if unset
+- Allows session forgery in production
+- Fix: Throw if secret is placeholder, matching auth 2.ts behavior
+- Source: Software Engineering Review
 
 ---
 
-#### C8: NEXTAUTH_SECRET Fallback Is a Security Anti-Pattern
-```typescript
-return process.env.NEXTAUTH_SECRET ?? 'NOT-CONFIGURED-BUILD-TIME-PLACEHOLDER'
-```
-If `NEXTAUTH_SECRET` is not set, JWT tokens are signed with a **publicly known placeholder string**. If NextAuth has any vulnerability related to token verification, this secret would be trivial to exploit.
+## Priority: P2 Issues Found
 
-**Fix:** Fail the build if `NEXTAUTH_SECRET` is not set in production:
-```typescript
-if (!process.env.NEXTAUTH_SECRET && process.env.NODE_ENV === 'production') {
-  throw new Error('NEXTAUTH_SECRET must be set in production')
-}
-```
+### P2-1: Backtest Files ~1 Year Stale — scripts/backtestData/
+- Data fetched April 2, 2026, no refresh mechanism
+- Fix: Add scheduled refresh mechanism
+- Source: Data Science Review
 
----
+### P2-2: EMA Legend Colors Don't Match CHART_EMA_COLORS — KLineChart.tsx vs lib/chartEma.ts
+- EMA 40: legend uses bg-yellow-600 but chart uses #d97706 (amber-600)
+- Fix: Generate legend from CHART_EMA_COLORS
+- Source: UI/UX Review
 
-#### C9: Shared Guest Watchlist Key
-All unauthenticated users share the same `ag-watchlist-guest` LocalStorage key. Actions by one guest affect what another guest sees.
+### P2-3: Slope Display ×100 Bug — app/backtest/page.tsx:840
+- If slopePct already a percentage, ×100 inflates to meaningless values
+- deviationPct not ×100 suggests inconsistency
+- Fix: Verify data contract; likely remove ×100
+- Source: UI/UX Review
 
-**Fix:** Generate a random guest ID per browser session:
-```typescript
-const GUEST_KEY = `ag-watchlist-guest-${sessionStorage.getItem('guestId') ?? uuid()}`
-// Store guestId on first visit
-if (!sessionStorage.getItem('guestId')) sessionStorage.setItem('guestId', uuid())
-```
+### P2-4: Walk-Forward Annualization Wrong Denominator — app/backtest/page.tsx:511
+- `((1+ret)^(252/rets.length) - 1)` uses 63-bar quarter length
+- Should use same denominator as IS period or explicitly annualize quarters
+- Source: Mathematics Review
 
----
+### P2-5: Kelly Formula Dead Code — lib/quant/kelly.ts
+- `kellyFraction()` is never called — signals use hardcoded Kelly heuristics
+- Fix: Wire up kellyFraction() or remove dead code
+- Source: Quant Finance Review
 
-### Quantitative / Data
-
-#### C10: Yahoo Finance API Has No Rate Limiting
-`/api/prices` and `/api/chart/[ticker]` make unthrottled calls to Yahoo Finance public APIs. Yahoo's terms of service prohibit abuse, and they may rate-limit or IP-ban the server.
-
-**Fix:** Implement per-minute rate limiting using `@upstash/ratelimit`:
-```typescript
-import { Ratelimit } from '@upstash/ratelimit'
-const ratelimit = new Ratelimit({ redis: kv, limiter: Ratelimit.slidingWindow(30, '1 m') })
-const { success } = await ratelimit.limit(ip)
-if (!success) return NextResponse.json({ error: 'Rate limited' }, { status: 429 })
-```
+### P2-2: 15-Second Refresh Creates Visual Noise — app/page.tsx:108
+- Per-second countdown tick is anxiety-inducing for traders
+- Fix: Remove countdown, show silent refresh with pulse dot
+- Source: UI/UX Review
 
 ---
 
-## HIGH Priority Issues
+## Disputes / Cross-Team
 
-### UX / UI
-
-#### H1: Missing robots.txt and sitemap.xml
-No SEO infrastructure exists. For a commercial product that users might discover via search, this is essential.
-
-**Fix:** Create `app/robots.txt` and `app/sitemap.xml`.
+1. **Sortino denominator**: Quant team says "wrong formula" (squaring instead of absolute), Math team says "mathematically equivalent." Resolved: non-standard but not wrong — downgrade to P2.
+2. **Signal exit timing**: BUY entries use next-day open, SELL exits same-day close — Quant team flagged as inconsistency. Quant team acknowledges this is slightly conservative for exits. Remains as P0 due to systematic slippage asymmetry.
+3. **Kelly dead code**: Quant team says remove it, Math team says wire it up. Left as P2 for now.
 
 ---
 
-#### H2: Compliance Banner Not Persistent
-`ComplianceBanner` is shown on every page load. Once dismissed, the user sees it again on every navigation. This is annoying and reduces trust.
-
-**Fix:** Store dismissed state in LocalStorage:
-```typescript
-const [dismissed, setDismissed] = useState(
-  () => typeof window !== 'undefined' && localStorage.getItem('complianceDismissed')
-)
-```
+## Decisions Made
+1. Prioritize: Fix all P0 issues first, then P1, then P2 in available time
+2. Not all P1 issues can be fixed in 4-hour sprint — prioritize data correctness first
+3. Sharpe Ratio rename takes precedence over recalculation (simpler fix)
+4. ATR indexing bug: fix signals.ts atr() function to match calcATR in KLineChart
 
 ---
 
-#### H3: KLineChart Has No Error Boundary
-`KLineChart` is dynamically imported with `ssr: false`, but only the BTC chart has `CryptoChartBoundary`. The sector chart (`/sector/[slug]`) has no error boundary — a chart crash would bring down the entire page.
+## Open Questions from Teams
 
-**Fix:** Wrap the sector chart in an error boundary:
-```typescript
-<ErrorBoundary fallback={<ChartFallback ticker={ticker} />}>
-  <Suspense fallback={<ChartSkeleton />}>
-    <KLineChart ... />
-  </Suspense>
-</ErrorBoundary>
-```
-
----
-
-#### H4: Backtest Data Not Refreshed Automatically
-`scripts/backtestData/` contains pre-fetched JSON files. These become stale over time. There's no mechanism to refresh them on a schedule.
-
-**Fix:** Add a Vercel Cron job to refresh data weekly:
-```json
-// vercel.json
-{ "crons": [{ "path": "/api/backtest", "schedule": "0 2 * * 0" }] }
-```
-
----
-
-#### H5: Bloomberg Bridge Has No Timeout
-`fetchBloombergQuotesViaBridge()` in `lib/data/bloomberg/bridgeClient.ts` has no timeout. If the bridge is unreachable, the request hangs indefinitely.
-
-**Fix:** Add a 3-second timeout:
-```typescript
-const controller = new AbortController()
-setTimeout(() => controller.abort(), 3000)
-const res = await fetch(url, { signal: controller.signal, ... })
-```
-
----
-
-## MEDIUM Priority Issues
-
-### API / Data
-
-#### M1: Yahoo Finance Response Typed as `any[]`
-`yahooFinance.quote(tickers) as Promise<any[]>` — if Yahoo changes their API response format, the app silently breaks or returns garbage.
-
-**Fix:** Validate the response with Zod:
-```typescript
-const quoteSchema = z.object({
-  symbol: z.string(),
-  regularMarketPrice: z.number().nullable(),
-  regularMarketChange: z.number().nullable(),
-  // ... other fields
-})
-const results = quoteSchema.array().parse(rawResults)
-```
-
----
-
-#### M2: Bloomberg Bridge Failure Is Silent
-When the Bloomberg bridge returns an error, the response says `dataSources.bloombergBridge = false` with no indication that Bloomberg *should* be connected. Operators may not notice the bridge is down.
-
-**Fix:** Add a `status` field to `dataSources`:
-```typescript
-dataSources: {
-  yahoo: true,
-  bloombergBridge: bbMap !== null,
-  bloombergBridgeStatus: bbMap ? 'connected' : 'disconnected'
-}
-```
-
----
-
-#### M3: No Pagination on Live Signals Table
-`LiveSignalsPanel` renders up to 200 rows. For 56 instruments this is fine now, but limits future scalability.
-
----
-
-#### M4: `slopePct` Display Bug (Already Found)
-```tsx
-{(inst.slopePct * 100).toFixed(4)}  // slopePct is already in decimal (0.00087)
-```
-Should be `(inst.slopePct * 100).toFixed(4)` — this is correct.
-
-Wait, slopePct is stored as a fraction (0.00087 = 0.087%), so multiplying by 100 gives 0.087%. But the UI shows 0.0087% — let me recheck.
-
-Actually looking at `signals.ts`:
-```typescript
-slopePct: slope  // raw numeric slope: e.g. 0.00087 = +0.087%/bar
-```
-This is the slope as a decimal fraction (0.00087 = 0.087%). The display code:
-```tsx
-{(inst.slopePct as number * 100).toFixed(4)}
-```
-This shows `0.0087` (4 decimal places = 0.0087%). The actual value `0.00087` would be displayed as `0.0087%` which is correct for "0.087%/bar" — but the precision might be confusing. Not a bug, just unclear formatting.
-
----
-
-#### M5: `watchlistButton` Uses Untyped Props
-`WatchlistButton` spreads props onto a `button` element without formal TypeScript typing, potentially accepting arbitrary HTML attributes without validation.
-
----
-
-### UX / UI
-
-#### M6: No Loading State on Desk Page Refresh Buttons
-`app/desk/page.tsx` has refresh buttons but no loading indicator while fetching.
-
----
-
-#### M7: No Empty State Design on Briefs Page
-If `BRIEFS` is empty or the external API fails, no friendly empty state is shown.
-
----
-
-#### M8: PWA Icons Are Generic
-The app icon (`icon-192x192.png`, `icon-512x512.png`) appears to be a generic placeholder. For a commercial product, a distinctive branded icon is needed.
-
----
-
-## Already Fixed (Confirmations)
-
-| Issue | Status | Notes |
-|-------|--------|-------|
-| Sortino denominator bug | FIXED | Now divides by N, not neg.length |
-| Same-day execution | FIXED | Executes at next-day open + 2bps slippage |
-| TX cost double-counting | FIXED | Clarified 11bps per side |
-| technicals.ts ATR Wilder | FIXED | Now uses Wilder smoothing |
-| technicals.ts RSI Wilder | FIXED | Now uses Wilder smoothing |
-| Portfolio aggregation | FIXED | Uses combined equity curve |
-| Trailing stop ATR | FIXED | Uses entry ATR |
-| ATR stop floor 5%→3% | FIXED | Better for low-vol instruments |
-| Sortino/Sortino MAR consistency | FIXED | Both use 4% rf |
-
----
-
-## Commercial Launch Checklist
-
-### Must Have (P0)
-- [ ] Add API_SECRET bearer token to all sensitive API routes
-- [ ] Add rate limiting to Yahoo Finance API calls
-- [ ] Replace in-memory cache with Vercel KV / Redis
-- [ ] Add ticker input validation (strict regex allowlist)
-- [ ] Sanitize all error messages before sending to client
-- [ ] Set NEXTAUTH_SECRET in all environments (fail build if missing)
-- [ ] Add middleware.ts for route protection
-- [ ] Fix Bloomberg bridge secret enforcement
-- [ ] Add timeout to Bloomberg bridge fetch
-
-### Should Have (P1)
-- [ ] Add robots.txt and sitemap.xml
-- [ ] Make compliance banner persistent (localStorage)
-- [ ] Add error boundary around KLineChart on sector pages
-- [ ] Set up Vercel Cron for backtest data refresh
-- [ ] Validate Yahoo Finance responses with Zod
-- [ ] Add bloombergBridgeStatus to dataSources response
-- [ ] Generate unique guestId per browser session
-
-### Nice to Have (P2)
-- [ ] Add pagination to live signals table
-- [ ] Loading states on desk refresh buttons
-- [ ] Empty state design on briefs page
-- [ ] Branded PWA icons
-- [ ] Add SWR for client-side data fetching/caching
-- [ ] Add dark/light mode toggle
+1. **slopePct data contract**: Is it already a % or a decimal? Team has conflicting views. Fixed: added guard to prevent NaN display.
+2. **walkForward testDays=63, trainDays=252**: Non-overlapping windows would be more conservative. Question deferred.
+3. **DCF sensitivity analysis**: Not implemented. Where is it supposed to be called from?
+4. **Data refresh**: How often should backtest JSON be refreshed? No automated mechanism exists.

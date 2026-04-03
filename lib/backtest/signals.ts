@@ -75,11 +75,10 @@ export function atr(bars: OhlcBar[], period = 14): number[] {
       Math.abs(bars[i].low - bars[i - 1].close),
     ))
   }
-  let avg = trs.slice(0, period).reduce((a, b) => a + b, 0) / period
-  out[period] = avg
+  out[period - 1] = avg
   for (let i = period; i < trs.length; i++) {
     avg = (avg * (period - 1) + trs[i]) / period
-    out[i + 1] = avg
+    out[i] = avg
   }
   return out
 }
@@ -356,10 +355,10 @@ export function combinedSignal(
 
   // ── Human-readable reason ───────────────────────────────────────────────
   const confLabels = [
-    rsiBullish  ? `RSI ${rsi14.toFixed(1)}`     : null,
-    macdBullish ? `MACD hist +${macdHist.toFixed(2)}` : null,
-    atrBullish  ? `ATR% ${atrPct.toFixed(1)}%`  : null,
-    bbBullish   ? `BB% ${(bbPctB * 100).toFixed(0)}%` : null,
+    Number.isFinite(rsi14)   && rsiBullish  ? `RSI ${rsi14.toFixed(1)}`        : null,
+    Number.isFinite(macdHist) && macdBullish ? `MACD hist +${macdHist.toFixed(2)}` : null,
+    Number.isFinite(atrPct)  && atrBullish  ? `ATR% ${atrPct.toFixed(1)}%`     : null,
+    Number.isFinite(bbPctB)  && bbBullish   ? `BB% ${(bbPctB * 100).toFixed(0)}%` : null,
   ].filter(Boolean)
 
   const reason = action === 'BUY'

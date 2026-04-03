@@ -22,10 +22,16 @@ if (process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET) {
   )
 }
 
-// Returns the secret, falling back to a build-safe placeholder.
-// NextAuth will gracefully reject unauthenticated requests if the secret is invalid.
+// Returns the secret. Throws in production if not configured to prevent session forgery.
 function getSecret(): string {
-  return process.env.NEXTAUTH_SECRET ?? 'NOT-CONFIGURED-BUILD-TIME-PLACEHOLDER'
+  const secret = process.env.NEXTAUTH_SECRET
+  if (!secret || secret === 'NOT-CONFIGURED-BUILD-TIME-PLACEHOLDER') {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('NEXTAUTH_SECRET is not set. Set it to a random 32+ character string.')
+    }
+    return 'dev-only-insecure-placeholder-do-not-use-in-production'
+  }
+  return secret
 }
 
 export function getAuthOptions(): NextAuthOptions {

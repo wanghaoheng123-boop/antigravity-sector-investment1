@@ -215,7 +215,7 @@ export default function BacktestPage() {
           <div className="flex flex-wrap gap-4 text-[11px] text-slate-500 border border-slate-800 rounded-lg px-4 py-2 bg-slate-900/40">
             <span><span className="text-slate-400">Strategy:</span> 200EMA Deviation Regime + RSI/MACD/ATR%/BB% Confirmations</span>
             <span><span className="text-slate-400">Capital:</span> $100,000 per instrument</span>
-            <span><span className="text-slate-400">Stop Loss:</span> ATR-adaptive (1.5× ATR, 5–15%)</span>
+            <span><span className="text-slate-400">Stop Loss:</span> ATR-adaptive (1.5× ATR, 3–15%)</span>
             <span><span className="text-slate-400">Trailing Stop:</span> 2× ATR → break-even, 4× ATR → 1× ATR lock</span>
             <span><span className="text-slate-400">Kelly:</span> Half-Kelly sizing (max 25%)</span>
             <span><span className="text-slate-400">Confidence threshold:</span> 55%</span>
@@ -240,9 +240,9 @@ export default function BacktestPage() {
             color={portfolio.alpha > 0 ? 'var(--color-accent-cyan)' : '#f97316'}
           />
           <MetricCard
-            label="Sharpe Ratio"
+            label="Calmar Ratio"
             value={fmtRatio(portfolio.avgAnnReturn > 0 && portfolio.maxPortfolioDd > 0 ? (portfolio.avgAnnReturn / (portfolio.maxPortfolioDd || 1)) : null)}
-            sub="Risk-adj return"
+            sub="Ann Return / Max DD"
             color={portfolio.alpha > 0 ? 'text-cyan-400' : 'text-slate-400'}
           />
           <MetricCard
@@ -591,6 +591,7 @@ function LiveSignalsPanel() {
   const [signals, setSignals] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(true)
   const [lastFetched, setLastFetched] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('confidence')
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
   const [filterSector, setFilterSector] = useState<string>('All')
@@ -599,12 +600,18 @@ function LiveSignalsPanel() {
   const fetchLive = useCallback(async () => {
     try {
       const res = await fetch(apiUrl('/api/backtest/live'), { cache: 'no-store' })
-      if (!res.ok) return
+      if (!res.ok) {
+        setError(`Server error: ${res.status} ${res.statusText}`)
+        setLoading(false)
+        return
+      }
       const json = await res.json()
       setSignals(json)
       setLastFetched(new Date().toLocaleTimeString())
-    } catch { /* ignore */ }
-    finally { setLoading(false) }
+      setError(null)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to load live signals')
+    } finally { setLoading(false) }
   }, [])
 
   useEffect(() => { void fetchLive() }, [fetchLive])
@@ -614,6 +621,14 @@ function LiveSignalsPanel() {
       <div className="flex items-center gap-3 text-slate-400 text-sm py-8 justify-center">
         <div className="w-5 h-5 border-2 border-slate-500 border-t-cyan-400 rounded-full animate-spin" />
         Loading live signals…
+      </div>
+    </div>
+  )
+  if (error) return (
+    <div className="space-y-4">
+      <div className="bg-red-950/30 border border-red-900/40 rounded-xl p-4 text-red-400 text-sm">
+        <div className="font-bold mb-1">Failed to load live signals</div>
+        <div className="text-red-300 text-xs">{error}</div>
       </div>
     </div>
   )

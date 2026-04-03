@@ -1,90 +1,49 @@
-# Task Plan: QUANTAN Sector Investment - Version 2.0
+# Task Plan: QUANTAN Comprehensive Review & Fix Sprint
 
-## Current Status
-- **Phase**: Planning
-- **Last Updated**: 2026-04-03
-- **Confidence**: High
-- **Goal**: Transform QUANTAN into the world's best institutional-grade market intelligence platform
+## Objective
+Conduct a 4-hour multi-specialist review of the QUANTAN sector investment platform covering quant finance algorithms, mathematics, data accuracy, UI/UX, and software engineering. Identify all technical issues, structural problems, algorithm inaccuracies, and data reliability concerns. Implement fixes based on feedback loops.
 
-## Objectives
+## Tasks
 
-### Primary
-1. Maintain dark terminal aesthetic while making it world-class (Bloomberg/TradingView quality)
-2. Improve user experience and interactions across all pages
-3. Enhance UI to exceed all referenced platforms (Bloomberg, Reuters, TradingView, AlphaSights, Robinhood, Webull, TD Ameritrade)
-4. Multiple iterative review cycles through the night
-5. Deploy to GitHub and Vercel
+### Phase 1: Specialist Reviews (Parallel — 60 min)
+- [ ] 1.1 Quant Finance Review — backtest engine, trading signals, position sizing, Kelly criterion
+- [ ] 1.2 Mathematics Review — all technical indicators (RSI, MACD, EMA, Bollinger Bands, ATR, VWAP), statistical calculations
+- [ ] 1.3 Data Science Review — Yahoo Finance data accuracy, data pipeline, API reliability, data validation
+- [ ] 1.4 UI/UX Review — visual design, component consistency, accessibility, responsiveness
+- [ ] 1.5 Software Engineering Review — code quality, TypeScript, performance, security, architecture
 
-### Secondary
-- Learn best patterns from: Bloomberg Terminal, Reuters Eikon, TradingView, AlphaSights, Questrom, Visible Alpha, Robinhood, Webull, TD Ameritrade
-- Create seamless navigation between pages
-- Implement professional-grade animations and transitions
-- Ensure mobile responsiveness
+### Phase 2: Cross-Team Feedback (30 min)
+- [ ] 2.1 Each specialist reviews other teams' findings
+- [ ] 2.2 Dispute resolution for conflicting findings
+- [ ] 2.3 Prioritize issues by severity
 
-## Reference Platforms Analysis
+### Phase 3: Consolidation & Fix Planning (30 min)
+- [ ] 3.1 Consolidate all findings into prioritized fix list
+- [ ] 3.2 Assign owners for each fix
+- [ ] 3.3 Validate fix feasibility
 
-| Platform | Best Features to Emulate |
-|----------|-------------------------|
-| Bloomberg Terminal | Data density, keyboard shortcuts, real-time feel, professional typography |
-| TradingView | Chart UX, drawing tools, indicator panel design, crosshair interactions |
-| Reuters Eikon | Clean data visualization, institutional feel |
-| AlphaSights | Research quality, expert connections UI |
-| Robinhood | Onboarding flow, simplicity, motion design |
-| Webull | Technical analysis tools layout, clean charts |
-| TD Ameritrade | Education integration, research quality |
+### Phase 4: Implementation (90 min)
+- [ ] 4.1 Implement P0 fixes (critical data/algorithm errors)
+- [ ] 4.2 Implement P1 fixes (significant issues)
+- [ ] 4.3 Implement P2 fixes (minor improvements)
 
-## Implementation Plan
+### Phase 5: Final Review & Deploy (30 min)
+- [ ] 5.1 Final verification by specialists
+- [ ] 5.2 GitHub push
+- [ ] 5.3 Vercel deployment verification
 
-### Phase 1: Analysis & Planning
-- [ ] UI/UX Agent: Detailed analysis of current codebase issues
-- [ ] Reference Platform Research: Study best features from each platform
-- [ ] Create comprehensive improvement specification
-- [ ] Design system enhancements
-
-### Phase 2: Core UI/UX Improvements
-- [ ] Navigation redesign
-- [ ] Header and layout improvements
-- [ ] Homepage transformation
-- [ ] Sector pages enhancement
-- [ ] Stock pages enhancement
-
-### Phase 3: Interaction & Animation
-- [ ] Animation system implementation
-- [ ] Transition improvements
-- [ ] Micro-interactions
-- [ ] Loading states refinement
-
-### Phase 4: Advanced Features
-- [ ] Chart improvements
-- [ ] Quant Lab enhancements
-- [ ] Backtest dashboard polish
-- [ ] Search optimization
-
-### Phase 5: Review & Iteration
-- [ ] Multiple review cycles
-- [ ] User feedback integration
-- [ ] Performance optimization
-- [ ] Mobile optimization
-
-### Phase 6: Deployment
-- [ ] GitHub repository preparation
-- [ ] Vercel deployment configuration
-- [ ] Final testing
-- [ ] Production verification
-
-## Team Structure
-
-| Agent | Role | Responsibilities |
-|-------|------|------------------|
-| UI/UX Agent | Lead Designer | Reference analysis, design system, UI redesign |
-| Frontend Agent | Implementation | Component rebuilding, interaction implementation |
-| Code Analyst | Reviewer | Code quality, best practices, issue identification |
-| DevOps Agent | Deployment | GitHub, Vercel deployment |
+## Priority Definitions
+| Priority | Definition |
+|----------|------------|
+| P0 | Data corruption, wrong financial calculations, security vulnerability |
+| P1 | Algorithm inaccuracy > 5%, significant UI breakage, performance issue |
+| P2 | Minor bug, cosmetic issue, code quality improvement |
 
 ## Blockers
 - None identified yet
 
-## Decisions Log
-- 2026-04-03: Keep dark terminal aesthetic, refine deeply
-- 2026-04-03: Learn from all reference platforms, blend best features
-- 2026-04-03: Use three-file pattern for persistent planning
+## Dependencies
+- All Phase 1 tasks run in parallel
+- Phase 2 depends on Phase 1
+- Phase 3 depends on Phase 2
+- Phase 4 depends on Phase 3

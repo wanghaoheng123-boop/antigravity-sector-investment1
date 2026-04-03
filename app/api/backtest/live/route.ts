@@ -15,6 +15,7 @@ import {
   macdFn,
   atr,
   bollinger,
+  DEFAULT_CONFIG,
 } from '@/lib/backtest/signals'
 import type { OhlcBar } from '@/lib/quant/technicals'
 
@@ -93,8 +94,8 @@ function stockSignal(ticker: string, sector: string): InstrumentSignal | null {
 
   const confidence = Math.min(100, reg.confidence + Math.round((bullishCount / 4) * 25))
 
-  // Suppress below threshold (same as backtest: 55%)
-  if (confidence < 55 && action !== 'SELL') action = 'HOLD'
+  // Suppress below threshold (matches backtest config — not a magic number)
+  if (confidence < DEFAULT_CONFIG.confidenceThreshold && action !== 'SELL') action = 'HOLD'
 
   let kelly = 0.10
   if (action === 'BUY') {
@@ -173,7 +174,7 @@ function btcSignal(): InstrumentSignal | null {
 
   const confidence = Math.min(100, reg.confidence + Math.round((bullishCount / 4) * 25))
 
-  if (confidence < 55 && action !== 'SELL') action = 'HOLD'
+  if (confidence < DEFAULT_CONFIG.confidenceThreshold && action !== 'SELL') action = 'HOLD'
 
   let kelly = 0.10
   if (action === 'BUY') {

@@ -868,6 +868,22 @@ export default function KLineChart({
 
   const activeIndicators = INDICATOR_DEFS.filter((d) => vis[d.key])
 
+  // Memoize last RSI and ATR to avoid recomputing on every render (e.g., crosshair move)
+  const latestRsi = useMemo<number | null>(() => {
+    if (!latestCandle || candles.length < 15) return null
+    const closes = candles.map(c => c.close)
+    const vals = calcRSI(closes, 14)
+    const last = vals[vals.length - 1]
+    return Number.isFinite(last) ? last : null
+  }, [candles, latestCandle])
+
+  const latestAtr14 = useMemo<number | null>(() => {
+    if (!latestCandle || candles.length < 15) return null
+    const vals = calcATR(candles, 14)
+    const last = vals[vals.length - 1]
+    return Number.isFinite(last) ? last : null
+  }, [candles, latestCandle])
+
   return (
     <div className="relative select-none">
       {/* ── Timeframe Selector ── */}
@@ -959,12 +975,7 @@ export default function KLineChart({
         <>
           <div className="relative border-t border-slate-800">
             <div className="absolute left-3 top-1 z-10 text-[10px] text-slate-500 font-mono">
-              RSI(14) {latestCandle && (() => {
-                const closes2 = candles.map(c => c.close)
-                const rsiVals = calcRSI(closes2, 14)
-                const last = rsiVals[rsiVals.length - 1]
-                return Number.isFinite(last) ? last.toFixed(1) : '—'
-              })()}
+              RSI(14) {latestRsi != null ? latestRsi.toFixed(1) : '—'}
             </div>
             <div ref={rsiRef} className="w-full overflow-hidden" />
           </div>
@@ -976,10 +987,7 @@ export default function KLineChart({
           </div>
           <div className="relative border-t border-slate-800">
             <div className="absolute left-3 top-1 z-10 text-[10px] text-slate-500 font-mono">
-              ATR(14) {latestCandle && (() => {
-                const atrVals = calcATR(candles, 14)
-                const last = atrVals[atrVals.length - 1]
-                return Number.isFinite(last) ? `$${last.toFixed(2)}` : '—'
+              ATR(14) {latestAtr14 != null ? `$${latestAtr14.toFixed(2)}` : '—'}
               })()}
             </div>
             <div ref={atrRef} className="w-full rounded-b-lg overflow-hidden" />

@@ -173,10 +173,10 @@ export function backtestInstrument(
         state.openTrade.highestPriceAfterEntry = Math.max(peakPrice, signalPrice)
         // Profit measured from entry
         const profitFromEntry = (signalPrice - state.openTrade.entryPrice) / state.openTrade.entryPrice
-        // Use ATR at entry (FIX T12: use entry ATR, not current ATR, for consistency)
-        const atrAtEntryVal = atrVals[i] ?? 0
-        const twoAtrProfit = (2 * atrAtEntryVal) / state.openTrade.entryPrice
-        const fourAtrProfit = (4 * atrAtEntryVal) / state.openTrade.entryPrice
+        // Convert stored ATR% (at entry) back to dollar ATR: ATR% / 100 * entryPrice
+        const atrAtEntryDollar = ((state.openTrade.atrAtrPctAtEntry ?? 10) / 100) * state.openTrade.entryPrice
+        const twoAtrProfit = (2 * atrAtEntryDollar) / state.openTrade.entryPrice
+        const fourAtrProfit = (4 * atrAtEntryDollar) / state.openTrade.entryPrice
         if (profitFromEntry >= twoAtrProfit) {
           // Raise stop to break-even + 0.5% buffer
           const trailStopPx = state.openTrade.entryPrice * (1 + 0.005)
