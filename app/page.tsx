@@ -300,6 +300,59 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Commodities & Indices */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-white">Commodities & Indices</h2>
+              <p className="text-[10px] text-slate-500 mt-0.5">Spot prices for major indices, commodities, and ETFs</p>
+            </div>
+            <Link href="/commodities" className="text-xs text-amber-400 hover:text-amber-300 transition-colors">
+              Full commodities →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {[
+              // US Indices
+              { ticker: 'SPY', name: 'S&P 500', color: '#3b82f6' },
+              { ticker: 'QQQ', name: 'Nasdaq 100', color: '#06b6d4' },
+              { ticker: 'DIA', name: 'Dow Jones', color: '#8b5cf6' },
+              { ticker: 'IWM', name: 'Russell 2000', color: '#ec4899' },
+              // Bonds
+              { ticker: 'TLT', name: '20+ Y Treasury', color: '#f59e0b' },
+              { ticker: 'HYG', name: 'High Yield', color: '#ef4444' },
+              // Metals & Energy
+              { ticker: 'GLD', name: 'Gold', color: '#fcd34d' },
+              { ticker: 'SLV', name: 'Silver', color: '#94a3b8' },
+              { ticker: 'USO', name: 'WTI Oil', color: '#f97316' },
+              { ticker: 'UNG', name: 'Nat Gas', color: '#22d3ee' },
+              // Broad
+              { ticker: 'DBC', name: 'Broad Commod.', color: '#eab308' },
+              { ticker: 'VIX', name: 'VIX', color: '#a78bfa' },
+            ].map(item => {
+              const q = quotes[item.ticker]
+              const isPos = (q?.changePct ?? 0) >= 0
+              const isNeg = (q?.changePct ?? 0) < 0
+              const changeColor = isPos ? '#00d084' : isNeg ? '#ff4757' : '#64748b'
+              return (
+                <div key={item.ticker} className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 hover:border-slate-700/80 transition-all">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-mono font-bold text-white">{item.ticker}</span>
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  </div>
+                  <div className="text-sm font-bold text-white font-mono">
+                    {q?.price != null && q.price > 0 ? q.price.toFixed(2) : '—'}
+                  </div>
+                  <div className="text-[10px] font-mono mt-0.5" style={{ color: changeColor }}>
+                    {q?.changePct != null ? `${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%` : '—'}
+                  </div>
+                  <div className="text-[9px] text-slate-600 mt-0.5 truncate">{item.name}</div>
+                </div>
+              )
+            })}
+          </div>
+        </section>
+
         {/* Sector Grid */}
         <section>
           <div className="flex flex-wrap items-center justify-between gap-3 mb-5">
