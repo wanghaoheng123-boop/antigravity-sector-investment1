@@ -29,8 +29,11 @@ interface SectorBrief {
 async function getAllBriefs(): Promise<SectorBrief[]> {
   const results = await Promise.allSettled(
     SECTORS.map(async s => {
+      const baseUrl = process.env.VERCEL_URL
+        ? `https://${process.env.VERCEL_URL}`
+        : 'http://localhost:3000'
       const res = await fetch(
-        `https://antigravity-sectors.vercel.app/api/briefs/${encodeURIComponent(s.slug)}`,
+        `${baseUrl}/api/briefs/${encodeURIComponent(s.slug)}`,
         { cache: 'no-store' }
       )
       if (!res.ok) return null

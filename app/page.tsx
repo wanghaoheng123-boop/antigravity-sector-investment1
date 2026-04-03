@@ -6,9 +6,24 @@ import SectorCard from '@/components/SectorCard'
 import SignalCard from '@/components/SignalCard'
 import PriceTicker from '@/components/PriceTicker'
 import { SECTORS } from '@/lib/sectors'
-import { BRIEFS } from '@/lib/mockData'
 import { PriceSignal } from '@/lib/sectors'
 import { buildSessionSignalsFromQuotes } from '@/lib/sessionSignalsFromQuotes'
+
+// Real news brief from Yahoo Finance API
+interface NewsBrief {
+  id: string
+  title: string
+  summary: string
+  sector: string
+  sectorName: string
+  sectorColor: string
+  timestamp: string | null
+  readTime: number
+  tags: string[]
+  link: string
+  publisher: string
+  tickers: string[]
+}
 
 interface Quote {
   ticker: string
@@ -35,6 +50,8 @@ export default function HomePage() {
   const [quotes, setQuotes] = useState<Record<string, Quote>>({})
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [countdown, setCountdown] = useState(15)
+  const [newsBriefs, setNewsBriefs] = useState<NewsBrief[]>([])
+  const [newsLoading, setNewsLoading] = useState(true)
   const [activeFilter, setActiveFilter] = useState<string>('ALL')
 
   const fetchPrices = useCallback(async () => {
@@ -58,6 +75,26 @@ export default function HomePage() {
     }, 15000)
     return () => clearInterval(interval)
   }, [fetchPrices])
+
+  // Fetch real news from Yahoo Finance
+  useEffect(() => {
+    async function fetchNews() {
+      try {
+        const res = await fetch('/api/briefs')
+        if (res.ok) {
+          const data = await res.json()
+          if (data.briefs) {
+            setNewsBriefs(data.briefs)
+          }
+        }
+      } catch {
+        // News fetch failed silently - briefs section will show empty state
+      } finally {
+        setNewsLoading(false)
+      }
+    }
+    fetchNews()
+  }, [])
 
   // Countdown timer
   useEffect(() => {
@@ -298,57 +335,99 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* Recent Briefs */}
+        {/* Recent Briefs - Live from Yahoo Finance */}
         <section>
           <div className="flex items-center justify-between mb-5">
             <div>
-              <h2 className="text-lg font-bold text-white">Recent Intelligence Briefs</h2>
-              <p className="text-xs text-slate-500 mt-0.5">Sample editorial briefs for UI — not verified research or live data.</p>
+              <h2 className="text-lg font-bold text-white">Latest Financial News</h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {newsLoading ? 'Loading latest news...' : `Live from Yahoo Finance · ${newsBriefs.length} articles`}
+              </p>
             </div>
-            <Link href="/briefs" className="text-sm text-blue-400 hover:text-blue-300 transition-colors">
-              View archive →
+            <Link href="/briefs" className="text-sm text-amber-400 hover:text-amber-300 transition-colors">
+              View all →
             </Link>
           </div>
-          <div className="space-y-4">
-            {BRIEFS.slice(0, 3).map(brief => {
-              const sector = SECTORS.find(s => s.slug === brief.sector)
-              return (
-                <Link key={brief.id} href={`/briefs/${brief.id}`}>
-                  <div className="rounded-xl border border-slate-800 p-5 hover:border-slate-600 hover:bg-slate-900/40 transition-all group">
-                    <div className="flex items-start gap-4">
-                      <div className="shrink-0 hidden sm:flex">
-                        <div
-                          className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
-                          style={{ backgroundColor: `${sector?.color}20` }}
-                        >
-                          {sector?.icon}
-                        </div>
+          {newsLoading ? (
+            <div className="space-y-4">
+              {[1, 2, 3].map(i => (
+                <div key={i} className="rounded-xl border border-slate-800 p-5 bg-slate-900/40">
+                  <div className="flex items-start gap-4">
+                    <div className="shrink-0 hidden sm:flex">
+                      <div className="w-10 h-10 rounded-lg bg-slate-800 animate-pulse" />
+                    </div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 w-20 bg-slate-800 rounded animate-pulse" />
+                      <div className="h-5 w-full bg-slate-800 rounded animate-pulse" />
+                      <div className="h-4 w-3/4 bg-slate-800 rounded animate-pulse" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : newsBriefs.length > 0 ? (
+            <div className="space-y-4">
+              {newsBriefs.slice(0, 3).map(brief => (
+                <a
+                  key={brief.id}
+                  href={brief.link}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block rounded-xl border border-slate-800 p-5 hover:border-amber-500/40 hover:bg-slate-900/40 transition-all group"
+                >
+                  <div className="flex items-start gap-4">
+                    <div className="shrink-0 hidden sm:flex">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center text-lg"
+                        style={{ backgroundColor: `${brief.sectorColor || '#f59e0b'}20` }}
+                      >
+                        {brief.tickers[0] ? `💼` : '📰'}
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5">
-                          <span className="text-xs font-medium px-2 py-0.5 rounded" style={{ backgroundColor: `${sector?.color}20`, color: sector?.color }}>
-                            {sector?.name ?? brief.sector}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        {brief.sectorName && (
+                          <span
+                            className="text-xs font-medium px-2 py-0.5 rounded"
+                            style={{ backgroundColor: `${brief.sectorColor}20`, color: brief.sectorColor }}
+                          >
+                            {brief.sectorName}
                           </span>
+                        )}
+                        {brief.tickers.slice(0, 2).map(t => (
+                          <span key={t} className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                            {t}
+                          </span>
+                        ))}
+                        <span className="text-xs text-slate-600">
+                          {brief.publisher}
+                        </span>
+                        {brief.timestamp && (
                           <span className="text-xs text-slate-600">
                             {formatUtcDateTime(brief.timestamp)}
                           </span>
-                          <span className="text-xs text-slate-600">{brief.readTime} min read</span>
-                        </div>
-                        <h3 className="text-base font-semibold text-white group-hover:text-slate-200 mb-1.5 leading-snug">{brief.title}</h3>
-                        <p className="text-sm text-slate-500 line-clamp-2">{brief.summary}</p>
-                        <div className="flex flex-wrap gap-1.5 mt-2.5">
-                          {brief.tags.slice(0, 4).map(tag => (
-                            <span key={tag} className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-500">{tag}</span>
-                          ))}
-                        </div>
+                        )}
                       </div>
-                      <div className="shrink-0 text-slate-600 group-hover:text-slate-400 transition-colors">→</div>
+                      <h3 className="text-base font-semibold text-white group-hover:text-slate-200 mb-1.5 leading-snug line-clamp-2">
+                        {brief.title}
+                      </h3>
+                      <p className="text-sm text-slate-500 line-clamp-2">{brief.summary}</p>
+                      <div className="flex flex-wrap gap-1.5 mt-2.5">
+                        {brief.tags.slice(0, 4).map(tag => (
+                          <span key={tag} className="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-500">{tag}</span>
+                        ))}
+                      </div>
                     </div>
+                    <div className="shrink-0 text-slate-600 group-hover:text-amber-400 transition-colors">↗</div>
                   </div>
-                </Link>
-              )
-            })}
-          </div>
+                </a>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-slate-800 p-8 text-center">
+              <p className="text-slate-500">No news available at the moment. Check back shortly.</p>
+            </div>
+          )}
         </section>
 
         {/* What's inside */}
