@@ -20,6 +20,8 @@
     "verify:data": "npm run verify:logic && npm run verify:indicators && npm run verify:btc",
     "check:all": "npm run verify:data && npm run validate:data && npm run check:smoke",
     "check:ci": "npm run verify:data && npm run check:smoke",
+    "lint": "next lint",
+    "lint:fix": "next lint --fix",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",

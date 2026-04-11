@@ -87,6 +87,14 @@ export default function RootLayout({
                   Briefs
                   <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
                 </Link>
+                <Link href="/portfolio" className="text-xs font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1">
+                  <span>Portfolio</span>
+                  <span className="text-[9px] px-1 py-0.5 rounded bg-indigo-500/20 text-indigo-400 font-mono leading-none">NEW</span>
+                </Link>
+                <Link href="/monitor" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Monitor
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
                 <GlobalSearch />
                 <SafeAuth />
                 <MarketStatus />

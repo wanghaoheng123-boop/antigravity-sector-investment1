@@ -45,23 +45,52 @@ last_updated: 2026-04-11
 - 2 new test files (`intermarket.test.ts`, `sectorRotation.test.ts`)
 - 266 tests passing, TypeScript clean
 
-**Phase 5: Data Infrastructure** - 🔲 NOT STARTED
-- Need: `lib/data/providers/types.ts`, `yahoo.ts`, `polygon.ts`, `alphavantage.ts`, `fred.ts`, `index.ts`
-- Need: `lib/data/warehouse.ts` (SQLite with better-sqlite3)
-- Need: `scripts/migrate-json-to-sqlite.ts`
-- Need: `app/api/stream/[ticker]/route.ts` (SSE streaming)
-- New deps: `better-sqlite3`, `@types/better-sqlite3`
-- Update: `lib/backtest/dataLoader.ts` (SQLite fallback)
+**Phase 5: Data Infrastructure** - ✅ COMPLETE (branch: claude/pedantic-morse)
+- `lib/data/providers/` — DataProvider interface + Yahoo/Polygon/AlphaVantage/FRED providers
+- `lib/data/warehouse.ts` — SQLite candle warehouse (better-sqlite3, graceful Vercel fallback)
+- `scripts/migrate-json-to-sqlite.ts` — One-time JSON → SQLite migration
+- `lib/backtest/dataLoader.ts` — SQLite-first with JSON fallback, unified `availableTickers()`
+- `app/api/stream/[ticker]/route.ts` — SSE real-time price streaming (15s poll, 10min auto-close)
+- 344 tests passing (all phases), TypeScript clean
 
-**Phase 6: Portfolio & Risk** - 🔲 NOT STARTED
-- Need: `lib/portfolio/tracker.ts`, `riskParity.ts`, `diversification.ts`, `stressTest.ts`
-- Need: `app/portfolio/page.tsx`
+**Phase 6: Portfolio & Risk Management** - ✅ COMPLETE (branch: claude/pedantic-morse)
+- `lib/portfolio/tracker.ts` — Immutable portfolio state (open/close/average, FIFO P&L, localStorage)
+- `lib/portfolio/riskParity.ts` — Inverse-volatility weighting, rebalance deltas, HHI
+- `lib/portfolio/diversification.ts` — Full correlation matrix, diversification ratio, A–D grade
+- `lib/portfolio/stressTest.ts` — 5 historical stress scenarios (GFC/COVID/RateShock/DotCom/FlashCrash)
+- `lib/portfolio/sizing.ts` — Kelly criterion sizing with portfolio constraints + volatility scaling
+- `app/api/portfolio/` — REST endpoints: summary, risk-parity, stress-test, sizing
+- `app/portfolio/page.tsx` — Full dashboard (positions, stress, risk parity, trade history tabs)
+- 60+ unit tests in `__tests__/portfolio/`
 
-**Phase 7: Continuous Optimization** - 🔲 NOT STARTED
-- Need: `scripts/nightly-backtest.ts`, `.github/workflows/nightly-backtest.yml`
-- Need: `lib/optimize/gridSearch.ts`
-- Need: `app/monitor/page.tsx`
+**Phase 7: Continuous Optimization** - ✅ COMPLETE (branch: claude/pedantic-morse)
+- `lib/optimize/gridSearch.ts` — Walk-forward grid search engine + SMA crossover evaluator
+- `app/api/optimize/route.ts` — Inline optimizer endpoint
+- `app/api/backtest/walk-forward/route.ts` — IS/OOS walk-forward analysis per ticker
+- `scripts/nightly-backtest.ts` — Multi-ticker nightly runner (JSON report + JSONL log)
+- `.github/workflows/nightly-backtest.yml` — Scheduled CI (02:00 UTC daily), regression alert
+- `.github/workflows/ci.yml` — Updated: lint → typecheck → unit tests
+- `app/api/monitor/route.ts` — System health endpoint (SQLite, ML sidecar, env, nightly results)
+- `app/monitor/page.tsx` — Live system monitor with 30s auto-refresh + inline optimizer
+- `AGENTS.md` — Comprehensive cross-platform agent guide (updated for all phases)
+- `.eslintrc.json` — ESLint config (`next/core-web-vitals` + TypeScript rules)
+- 363 tests across 25 test files — all pass, TypeScript clean, ESLint configured
 
 ---
 
-**How to apply:** At the start of any development session, check this file to know where to pick up. Then read `AGENTS.md` in the project root for full implementation details of the next phase.
+## Additional Improvements (Post-Phase 7)
+- Navigation: added Portfolio and Monitor links to `app/layout.tsx` header
+- CI: `ci.yml` now runs lint + typecheck + unit tests on every PR
+
+---
+
+## Next Priorities
+1. **Production hardening:** API rate limiting, error boundaries, retry logic
+2. **Real-time data:** WebSocket subscriptions (Polygon stream API) replacing SSE polling
+3. **Additional ML models:** LSTM, Transformer-based price prediction
+4. **Portfolio performance attribution:** factor decomposition (Fama-French 3-factor)
+5. **Alert system:** price alerts, signal change notifications (email/webhook)
+
+---
+
+**How to apply:** At the start of any development session, check this file to know where to pick up. Then read `AGENTS.md` in the project root for full implementation details.
