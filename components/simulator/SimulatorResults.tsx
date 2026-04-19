@@ -4,8 +4,9 @@ import { useState } from 'react'
 import EquityCurveChart from '@/components/backtest/EquityCurveChart'
 import InstrumentTable from '@/components/backtest/InstrumentTable'
 import TradeLog from '@/components/backtest/TradeLog'
-import type { BacktestResult } from '@/lib/backtest/engine'
-import type { StrategyConfig } from '@/lib/simulator/strategyConfig'
+import type { BacktestResult, WalkForwardSummary } from '@/lib/backtest/engine'
+import { normalizedConfidenceScales, type StrategyConfig } from '@/lib/simulator/strategyConfig'
+import type { EntryExitZonesPayload } from '@/lib/quant/entryExitZones'
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -30,6 +31,9 @@ export interface SimulatorResultsProps {
   results: BacktestResult[]
   portfolio: SimulatorPortfolio
   config: StrategyConfig
+  walkForwardByTicker?: Record<string, WalkForwardSummary | null>
+  paperAdvisory?: Record<string, { csp: string; cc: string }>
+  entryExitZonesByTicker?: Record<string, EntryExitZonesPayload>
   liveQuotes?: Record<string, {
     price?: number
     changePct?: number
@@ -73,38 +77,17 @@ function MetricCard({ label, value, sub, color }: { label: string; value: string
 
 // ─── Walk-Forward Panel ────────────────────────────────────────────────────────
 
-function WalkForwardPanel({ results }: { results: BacktestResult[] }) {
+export function WalkForwardPanel({
+  results,
+  walkForwardByTicker,
+}: {
+  results: BacktestResult[]
+  walkForwardByTicker?: Record<string, WalkForwardSummary | null>
+}) {
   const [selectedTicker, setSelectedTicker] = useState(results[0]?.ticker ?? '')
   const selected = results.find(r => r.ticker === selectedTicker)
   const tickers = results.map(r => r.ticker)
-
-  const quarters = ((): { label: string; ret: number; sharpe: number | null; ann: number }[] => {
-    if (!selected) return []
-    const len = selected.equityCurve.length
-    const qLen = Math.floor(len / 4)
-    if (qLen < 30) return []
-    return [0, 1, 2, 3].map(q => {
-      const start = q * qLen
-      const end = q === 3 ? len : (q + 1) * qLen
-      const curve = selected.equityCurve.slice(start, end)
-      const rets: number[] = []
-      for (let i = 1; i < curve.length; i++) {
-        const r = (curve[i] - curve[i - 1]) / curve[i - 1]
-        if (Number.isFinite(r)) rets.push(r)
-      }
-      if (rets.length < 10) return null
-      const mean = rets.reduce((a, b) => a + b, 0) / rets.length
-      const sd = Math.sqrt(rets.reduce((s, x) => s + (x - mean) ** 2, 0) / Math.max(1, rets.length - 1))
-      const sharpe = sd > 1e-10 ? ((mean - 0.04 / 252) / sd) * Math.sqrt(252) : null
-      const ret = (curve[curve.length - 1] - curve[0]) / curve[0]
-      return {
-        label: ['Q1', 'Q2', 'Q3', 'Q4'][q],
-        ret,
-        sharpe,
-        ann: ((1 + ret) ** (252 / rets.length) - 1),
-      }
-    }).filter((x): x is { label: string; ret: number; sharpe: number | null; ann: number } => x !== null)
-  })()
+  const wf = walkForwardByTicker?.[selectedTicker]
 
   if (!selected) return <div className="text-slate-500 text-sm py-8 text-center">No instrument data available.</div>
 
@@ -123,31 +106,66 @@ function WalkForwardPanel({ results }: { results: BacktestResult[] }) {
         </select>
       </div>
 
-      {quarters.length > 0 && (
-        <div className="mb-4">
-          <div className="text-xs text-slate-500 mb-2">Rolling Quarterly Performance — {selectedTicker}</div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {quarters.map(q => (
-              <div key={q.label} className="bg-slate-800/60 rounded-lg p-3 border border-slate-700/50">
-                <div className="text-[10px] text-slate-500 mb-1">{q.label}</div>
-                <div className={`text-lg font-bold font-mono ${q.ann >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                  {(q.ann * 100).toFixed(1)}%
-                </div>
-                <div className="text-[10px] text-slate-500 mt-0.5">
-                  Sharpe: {q.sharpe != null ? q.sharpe.toFixed(2) : '—'}
-                </div>
-                <div className={`text-[10px] mt-0.5 ${q.ret >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-                  Total: {(q.ret * 100).toFixed(1)}%
-                </div>
-              </div>
-            ))}
+      <div className="mb-3 text-[10px] text-slate-500 leading-relaxed">
+        <strong className="text-slate-400">Windows:</strong> in-sample = 252 trading days, out-of-sample = 63 days, stepped forward by 63 days (same engine as <span className="font-mono">lib/backtest/engine</span>).
+      </div>
+
+      {wf && wf.windows.length > 0 ? (
+        <>
+          <div className="overflow-x-auto mb-4">
+            <table className="w-full text-[11px]">
+              <thead>
+                <tr className="border-b border-slate-800 text-slate-500">
+                  <th className="text-left py-2 pr-2">Period</th>
+                  <th className="text-right py-2">IS ann.</th>
+                  <th className="text-right py-2">OOS ann.</th>
+                  <th className="text-right py-2">OOS/IS</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {wf.windows.map(w => (
+                  <tr key={w.periodLabel}>
+                    <td className="py-1.5 pr-2 text-slate-400 font-mono">{w.periodLabel}</td>
+                    <td className={`text-right font-mono ${w.isReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {(w.isReturn * 100).toFixed(1)}%
+                    </td>
+                    <td className={`text-right font-mono ${w.osReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                      {(w.osReturn * 100).toFixed(1)}%
+                    </td>
+                    <td className="text-right font-mono text-slate-300">{w.oosRatio.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-4">
+            <div className="bg-slate-800/40 rounded-lg p-2 border border-slate-700/50">
+              <div className="text-[9px] text-slate-500">Avg IS ann.</div>
+              <div className="text-sm font-mono text-slate-200">{(wf.avgIsReturn * 100).toFixed(1)}%</div>
+            </div>
+            <div className="bg-slate-800/40 rounded-lg p-2 border border-slate-700/50">
+              <div className="text-[9px] text-slate-500">Avg OOS ann.</div>
+              <div className="text-sm font-mono text-slate-200">{(wf.avgOsReturn * 100).toFixed(1)}%</div>
+            </div>
+            <div className="bg-slate-800/40 rounded-lg p-2 border border-slate-700/50">
+              <div className="text-[9px] text-slate-500">Avg OOS/IS</div>
+              <div className="text-sm font-mono text-slate-200">{wf.avgOosRatio.toFixed(2)}</div>
+            </div>
+            <div className="bg-slate-800/40 rounded-lg p-2 border border-slate-700/50">
+              <div className="text-[9px] text-slate-500">Overfit index</div>
+              <div className="text-sm font-mono text-amber-400/90">{wf.overfittingIndex.toFixed(2)}</div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="mb-4 text-xs text-slate-500">
+          No walk-forward windows for this ticker (need ~315+ daily bars). Full-sample metrics below are not an IS/OOS split.
         </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50">
-          <div className="text-[10px] text-slate-500 uppercase mb-1">In-Sample Ann. Return</div>
+          <div className="text-[10px] text-slate-500 uppercase mb-1">Full-sample Ann. Return</div>
           <div className={`text-xl font-bold font-mono ${selected.annualizedReturn >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
             {(selected.annualizedReturn * 100).toFixed(1)}%
           </div>
@@ -167,8 +185,7 @@ function WalkForwardPanel({ results }: { results: BacktestResult[] }) {
       </div>
 
       <div className="mt-3 text-[10px] text-slate-600">
-        Walk-forward splits data into in-sample (train) and out-of-sample (test) windows. A robust strategy should maintain similar Sharpe ratios across both.
-        Large IS/OOS gap indicates potential overfitting to historical patterns.
+        Robust strategies show OOS performance in line with IS segments. A collapsing OOS/IS ratio or very high overfitting index warrants simpler rules or fewer parameters.
       </div>
     </div>
   )
@@ -223,7 +240,43 @@ function StrategyModeBadge({ config }: { config: StrategyConfig }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 
-export default function SimulatorResults({ results, portfolio, config, computedAt, runId, liveQuotes }: SimulatorResultsProps) {
+function EntryExitZonesCard({
+  zones,
+  ticker,
+}: {
+  zones: EntryExitZonesPayload
+  ticker: string
+}) {
+  return (
+    <div className="bg-slate-900/50 rounded-xl border border-slate-800 p-4">
+      <div className="text-xs font-semibold text-slate-300 mb-1">{ticker} — conditional price bands</div>
+      <p className="text-[10px] text-slate-500 mb-3 leading-relaxed">{zones.disclaimer}</p>
+      <ul className="space-y-2 text-[11px]">
+        {zones.bands.map(b => (
+          <li key={b.id} className="border border-slate-800/80 rounded-lg p-2 bg-slate-950/40">
+            <div className="text-slate-400 font-medium">{b.label}</div>
+            <div className="font-mono text-slate-200">
+              {b.lower.toFixed(2)} – {b.upper.toFixed(2)}
+            </div>
+            <div className="text-slate-600 text-[10px] mt-0.5">{b.note}</div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+export default function SimulatorResults({
+  results,
+  portfolio,
+  config,
+  computedAt,
+  runId,
+  liveQuotes,
+  walkForwardByTicker,
+  paperAdvisory,
+  entryExitZonesByTicker,
+}: SimulatorResultsProps) {
   const [activeTab, setActiveTab] = useState<'summary' | 'instruments' | 'trades' | 'analysis'>('summary')
 
   const INITIAL_CAPITAL = portfolio.initialCapital || 100_000
@@ -304,6 +357,17 @@ export default function SimulatorResults({ results, portfolio, config, computedA
         />
       </div>
 
+      {entryExitZonesByTicker && Object.keys(entryExitZonesByTicker).length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {results
+            .filter(r => entryExitZonesByTicker[r.ticker]?.bands?.length)
+            .slice(0, 6)
+            .map(r => (
+              <EntryExitZonesCard key={r.ticker} ticker={r.ticker} zones={entryExitZonesByTicker[r.ticker]} />
+            ))}
+        </div>
+      )}
+
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 bg-slate-900 rounded-lg p-1 border border-slate-800 w-fit">
         {(['summary', 'instruments', 'trades', 'analysis'] as const).map(tab => (
@@ -338,13 +402,22 @@ export default function SimulatorResults({ results, portfolio, config, computedA
             <h3 className="text-sm font-semibold text-white mb-3 uppercase tracking-wider text-slate-400">Strategy Rules</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs text-slate-400">
               {[
-                ['BUY Signal', '200EMA deviation dip zone + 200SMA rising (>0.5%/20bars) + price near SMA + ≥2 of: RSI<35, MACD hist>0, ATR%>2, BB%<0.20 → BUY with Half-Kelly (10–25%)'],
+                ['BUY Signal', `${config.regime.smaPeriod}-period SMA deviation dip zone + SMA slope rising (>0.5%/20 bars) + price near SMA + ≥2 of: RSI<35, MACD hist>0, ATR%>2, BB%<0.20 → sized per Kelly tiers`],
                 ['HOLD', 'Confidence <55% or HEALTHY_BULL / EXTENDED_BULL → No action. Slope insufficient or price not near SMA = no buy.'],
                 ['SELL Signal', 'FALLING_KNIFE (dip zone + declining SMA) or HEALTHY_BULL + RSI>70 → Exit full position'],
                 ['Stop Loss', `ATR-adaptive: ${config.stopLoss.stopLossAtrMultiplier}× ATR%, floor ${(config.stopLoss.stopLossFloor * 100).toFixed(0)}%, cap ${(config.stopLoss.stopLossCeiling * 100).toFixed(0)}%. Volatility-adjusted per instrument.`],
                 ['Trailing Stop', `${config.stopLoss.trailAtrMultiplier1}× ATR profit → stop rises to break-even. ${config.stopLoss.trailAtrMultiplier2}× ATR profit → stop locks at ${config.stopLoss.trailLockMultiplier}× ATR above entry.`],
                 ['Max DD Cap', `${(config.stopLoss.maxDrawdownCap * 100).toFixed(0)}% portfolio equity drawdown → circuit breaker, close all positions immediately`],
-                ['Position Sizing', `Kelly mode: ${config.positionSizing.kellyMode} · Max ${(config.positionSizing.maxKellyFraction * 100).toFixed(0)}% per trade · Confidence threshold: ${config.positionSizing.confidenceScales[0]?.confidenceThreshold}%`],
+                [
+                  'Position Sizing',
+                  (() => {
+                    const tiers = normalizedConfidenceScales(config.positionSizing.confidenceScales)
+                    const tierStr = tiers
+                      .map((s) => `≥${s.confidenceThreshold}%→${(s.kellyFraction * 100).toFixed(0)}%`)
+                      .join(' · ')
+                    return `Kelly mode: ${config.positionSizing.kellyMode} · Max ${(config.positionSizing.maxKellyFraction * 100).toFixed(0)}% per trade · Tiers: ${tierStr}`
+                  })(),
+                ],
                 ['Transaction Costs', `${config.transactionCosts.txCostBpsPerSide} bps round-trip (IBKR: $0.005/sh + 0.05% spread + 0.5bps slippage)`],
               ].map(([title, desc]) => (
                 <div key={title} className="bg-slate-800/50 rounded-lg p-3 border border-slate-700/50">
@@ -367,7 +440,27 @@ export default function SimulatorResults({ results, portfolio, config, computedA
 
       {activeTab === 'analysis' && (
         <div className="space-y-6">
-          <WalkForwardPanel results={results} />
+          <WalkForwardPanel results={results} walkForwardByTicker={walkForwardByTicker} />
+
+          {paperAdvisory && Object.keys(paperAdvisory).length > 0 && (
+            <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-6">
+              <h3 className="text-sm font-semibold text-white mb-2 uppercase tracking-wider text-slate-400">
+                Paper options · CSP / Covered call (advisory)
+              </h3>
+              <p className="text-[10px] text-slate-500 mb-4">
+                Not merged into strategy equity. Assumes end-of-day chain snapshot; no assignment, borrow, or dividend risk model.
+              </p>
+              <div className="space-y-3">
+                {Object.entries(paperAdvisory).map(([t, adv]) => (
+                  <div key={t} className="bg-slate-800/40 rounded-lg p-3 border border-slate-700/50 text-xs text-slate-400 space-y-1">
+                    <div className="font-mono text-slate-300">{t}</div>
+                    <div><span className="text-slate-500">CSP:</span> {adv.csp}</div>
+                    <div><span className="text-slate-500">CC:</span> {adv.cc}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Regime performance breakdown */}
           <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-6">

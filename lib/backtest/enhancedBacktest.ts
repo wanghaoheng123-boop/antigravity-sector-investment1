@@ -12,7 +12,14 @@
  */
 
 import { createVerification, DataVerification } from '@/lib/research/dataVerification'
-import { backtestInstrument, type BacktestResult, type OhlcvRow } from './engine'
+import {
+  backtestInstrument,
+  walkForwardAnalysis,
+  walkForwardSummary,
+  type BacktestResult,
+  type OhlcvRow,
+  type WalkForwardSummary,
+} from './engine'
 import { DEFAULT_CONFIG } from './signals'
 
 // ─── Validation Types ────────────────────────────────────────────────────────
@@ -108,7 +115,8 @@ function validateBacktest(
   equityCurve: number[],
   dailyReturns: number[],
   totalDataPoints: number,
-  tradesInSample: number
+  tradesInSample: number,
+  walkForward: WalkForwardSummary | null,
 ): BacktestValidation {
   const warnings: string[] = []
   const errors: string[] = []
@@ -266,12 +274,17 @@ export function runEnhancedBacktest(
   const equityCurve = result.equityCurve
   const dailyReturns = result.dailyReturns
 
+  const walkForward =
+    rows.length >= 315
+      ? walkForwardSummary(walkForwardAnalysis(ticker, sector, rows, 252, 63, config ?? {}))
+      : null
+
   // Compute rolling metrics
   const rollingSharpe = computeRollingSharpe(dailyReturns, 63)
   const rollingMaxDrawdown = computeRollingMaxDrawdown(equityCurve, 63)
 
   // Validate
-  const validation = validateBacktest(result, equityCurve, dailyReturns, rows.length, result.totalTrades)
+  const validation = validateBacktest(result, equityCurve, dailyReturns, rows.length, result.totalTrades, walkForward)
 
   // Regime performance
   const REGIMES = [
@@ -284,7 +297,7 @@ export function runEnhancedBacktest(
   // Verification
   const dataVerification = createVerification(
     'calculated',
-    `Walk-forward backtest using ${rows.length} daily bars. Signal: 200EMA regime + RSI/MACD/ATR/BB confirmation. Execution: next-day open with 2bps slippage. Transaction cost: 11bps/side. Kelly fraction: half-Kelly, capped at 50%.`,
+    `Walk-forward backtest using ${rows.length} daily bars. Signal: long-horizon SMA regime + RSI/MACD/ATR/BB confirmation. Execution: next-day open with 2bps slippage. Transaction cost: 11bps/side. Kelly sizing per configured tiers.`,
     {
       confidence: result.totalTrades > 30 ? 0.82 : 0.5,
       rawFields: ['open', 'high', 'low', 'close', 'volume'],

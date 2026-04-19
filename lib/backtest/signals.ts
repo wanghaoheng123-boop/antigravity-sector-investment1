@@ -245,6 +245,8 @@ export interface BacktestConfig {
   confidenceThreshold: number
   maxDrawdownCap: number
   halfKelly: boolean
+  /** Max fraction of capital allocated to a new long (from strategy stopLoss / risk budget). */
+  maxPositionWeight: number
 }
 
 export const DEFAULT_CONFIG: BacktestConfig = {
@@ -255,6 +257,7 @@ export const DEFAULT_CONFIG: BacktestConfig = {
   confidenceThreshold: 55,  // Lowered from 65 to allow more signals through
   maxDrawdownCap: 0.25,
   halfKelly: true,
+  maxPositionWeight: 0.5,
 }
 
 export interface ConfirmSignal {

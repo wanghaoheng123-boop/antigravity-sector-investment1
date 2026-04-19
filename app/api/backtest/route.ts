@@ -12,9 +12,17 @@
 import { NextResponse } from 'next/server'
 import { SECTORS } from '@/lib/sectors'
 import { loadStockHistory, loadBtcHistory, availableTickers } from '@/lib/backtest/dataLoader'
-import { backtestInstrument, aggregatePortfolio } from '@/lib/backtest/engine'
+import {
+  backtestInstrument,
+  aggregatePortfolio,
+  walkForwardAnalysis,
+  walkForwardSummary,
+  type WalkForwardSummary,
+} from '@/lib/backtest/engine'
 import type { StrategyConfig } from '@/lib/simulator/strategyConfig'
-import { toBacktestConfig } from '@/lib/simulator/strategyConfig'
+import { mergeStrategyConfig, toBacktestConfig } from '@/lib/simulator/strategyConfig'
+import { newTraceId, buildRunAudit, configHashFromObject, logRunEvent } from '@/lib/runAudit'
+import { clientKeyFromRequest, rateLimitHit } from '@/lib/api/simpleRateLimit'
 import YahooFinance from 'yahoo-finance2'
 import type { OhlcvRow } from '@/lib/backtest/engine'
 
@@ -55,10 +63,13 @@ async function runBacktest(
   isLiveRun: boolean = false,
 ): Promise<{
   runId: string
+  traceId: string
   computedAt: string
   dataSource: 'local' | 'live'
+  audit: ReturnType<typeof buildRunAudit>
   instruments: { ticker: string; sector: string; candles: number }[]
   results: ReturnType<typeof backtestInstrument>[]
+  walkForward: Array<{ ticker: string; sector: string; summary: WalkForwardSummary }>
   portfolio: {
     avgReturn: number
     avgAnnReturn: number
@@ -77,11 +88,22 @@ async function runBacktest(
     finalCapital: number
   }
 }> {
+  const traceId = newTraceId('bt')
   const instruments: { ticker: string; sector: string; candles: number }[] = []
   const results: ReturnType<typeof backtestInstrument>[] = []
+  const walkForward: Array<{ ticker: string; sector: string; summary: WalkForwardSummary }> = []
 
   // Convert StrategyConfig → BacktestConfig for the engine
   const backtestConfig = config ? toBacktestConfig(config) : undefined
+  const wfConfig = backtestConfig ?? {}
+
+  const MIN_WF_BARS = 315 // 252 train + 63 test (walkForwardAnalysis also requires min train/test lengths)
+
+  function pushWalkForward(ticker: string, sector: string, rows: OhlcvRow[]) {
+    if (rows.length < MIN_WF_BARS) return
+    const summary = walkForwardSummary(walkForwardAnalysis(ticker, sector, rows, 252, 63, wfConfig))
+    if (summary.windows.length > 0) walkForward.push({ ticker, sector, summary })
+  }
 
   // Determine which tickers are "custom" (not in the local dataset)
   const localTickers = availableTickers()
@@ -106,6 +128,7 @@ async function runBacktest(
       localInstruments.push({ ticker, sector: sector.name, candles: rows.length })
       if (rows.length >= 100) {
         results.push(backtestInstrument(ticker, sector.name, rows, backtestConfig))
+        pushWalkForward(ticker, sector.name, rows)
       }
     }
   }
@@ -116,6 +139,7 @@ async function runBacktest(
     localInstruments.push({ ticker: 'BTC', sector: 'Crypto', candles: btcRows.length })
     if (btcRows.length >= 100) {
       results.push(backtestInstrument('BTC', 'Crypto', btcRows, backtestConfig))
+      pushWalkForward('BTC', 'Crypto', btcRows)
     }
   }
 
@@ -127,6 +151,7 @@ async function runBacktest(
       liveInstruments.push({ ticker, sector: 'Custom', candles: rows.length })
       if (rows.length >= 100) {
         results.push(backtestInstrument(ticker, 'Custom', rows, backtestConfig))
+        pushWalkForward(ticker, 'Custom', rows)
       }
     } catch {
       liveInstruments.push({ ticker, sector: 'Custom', candles: 0 })
@@ -138,12 +163,22 @@ async function runBacktest(
 
   // If no instruments, return empty result
   if (instruments.length === 0) {
+    const mergedCfg = config ? mergeStrategyConfig(config) : mergeStrategyConfig()
     const empty = {
-      runId: `run_${Date.now()}`,
+      runId: traceId,
+      traceId,
       computedAt: new Date().toISOString(),
       dataSource: 'live' as const,
+      audit: buildRunAudit({
+        runId: traceId,
+        traceId,
+        configHash: configHashFromObject(mergedCfg),
+        dataSource: 'live',
+        iterationsRun: 0,
+      }),
       instruments: [],
       results: [],
+      walkForward: [],
       portfolio: {
         avgReturn: 0, avgAnnReturn: 0, bnhAvg: 0, alpha: 0, sharpeRatio: null,
         sortinoRatio: null, maxPortfolioDd: 0, winRate: 0, profitFactor: 0,
@@ -159,12 +194,49 @@ async function runBacktest(
     ? results.reduce((s, r) => s + r.bnhReturn, 0) / results.length
     : 0
 
+  const mergedCfg = config ? mergeStrategyConfig(config) : mergeStrategyConfig()
+  let firstBarUnix: number | undefined
+  let lastBarUnix: number | undefined
+  if (!isLiveRun && results.length > 0) {
+    const t = results[0].ticker
+    const rows =
+      t === 'BTC'
+        ? loadBtcHistory()
+        : availableTickers().includes(t.toUpperCase())
+          ? loadStockHistory(t)
+          : []
+    if (rows.length > 1) {
+      firstBarUnix = rows[0].time
+      lastBarUnix = rows[rows.length - 1].time
+    }
+  }
+
+  const audit = buildRunAudit({
+    runId: traceId,
+    traceId,
+    configHash: configHashFromObject(mergedCfg),
+    dataWindow:
+      firstBarUnix != null && lastBarUnix != null ? { firstBarUnix, lastBarUnix } : undefined,
+    iterationsRun: results.length,
+    dataSource: isLiveRun ? 'live' : 'local',
+  })
+
+  logRunEvent('info', 'backtest_complete', {
+    traceId,
+    runId: traceId,
+    iterationsRun: results.length,
+    dataSource: audit.dataSource,
+  })
+
   return {
-    runId: `run_${Date.now()}`,
+    runId: traceId,
+    traceId,
     computedAt: new Date().toISOString(),
     dataSource: isLiveRun ? 'live' : 'local',
+    audit,
     instruments,
     results,
+    walkForward,
     portfolio: {
       avgReturn: portfolio.totalReturn,
       avgAnnReturn: portfolio.annualizedReturn,
@@ -213,6 +285,9 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  if (rateLimitHit(`backtest:${clientKeyFromRequest(request)}`, 8, 60_000)) {
+    return NextResponse.json({ error: 'Too many backtest requests — try again shortly.' }, { status: 429 })
+  }
   cache = null
   try {
     let config: Partial<StrategyConfig> | undefined

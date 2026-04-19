@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import YahooFinance from 'yahoo-finance2'
 import { generateDarkPoolMarkers } from '@/lib/mockData'
 import { aggregateMinuteQuotesToN } from '@/lib/chartYahoo'
+import { getEquityDataProvider } from '@/lib/data/providers/index'
+import type { ChartInterval } from '@/lib/data/providers/types'
 
 const yahooFinance = new YahooFinance()
 
@@ -143,21 +145,40 @@ export async function GET(
         break
     }
 
-    const result = await yahooFinance.chart(ticker, { period1, interval })
-
-    if (!result || !result.quotes || result.quotes.length === 0) {
-      return NextResponse.json({ error: 'No historical data found for ticker' }, { status: 404 })
-    }
-
     const isIntraday = ['1m', '2m', '5m', '15m', '1h', '2h', '4h'].includes(interval)
-    const candles = result.quotes
-      .filter((c: any) => c.close !== null)
-      .map((c: any) => {
-        const timeVal = isIntraday
-          ? Math.floor(c.date.getTime() / 1000)
-          : c.date.toISOString().split('T')[0]
-        return { time: timeVal, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }
-      })
+
+    let candles: Array<{ time: string | number; open: number; high: number; low: number; close: number; volume: number }>
+
+    if (!isIntraday && (interval === '1d' || interval === '1wk' || interval === '1mo')) {
+      const provider = getEquityDataProvider()
+      const bars = await provider.fetchDaily(ticker, { period1, interval: interval as ChartInterval })
+      if (!bars?.length) {
+        return NextResponse.json({ error: 'No historical data found for ticker' }, { status: 404 })
+      }
+      candles = bars.map(b => ({
+        time: new Date(b.time * 1000).toISOString().split('T')[0],
+        open: b.open,
+        high: b.high,
+        low: b.low,
+        close: b.close,
+        volume: b.volume,
+      }))
+    } else {
+      const result = await yahooFinance.chart(ticker, { period1, interval })
+
+      if (!result || !result.quotes || result.quotes.length === 0) {
+        return NextResponse.json({ error: 'No historical data found for ticker' }, { status: 404 })
+      }
+
+      candles = result.quotes
+        .filter((c: any) => c.close !== null)
+        .map((c: any) => {
+          const timeVal = isIntraday
+            ? Math.floor(c.date.getTime() / 1000)
+            : c.date.toISOString().split('T')[0]
+          return { time: timeVal, open: c.open, high: c.high, low: c.low, close: c.close, volume: c.volume }
+        })
+    }
 
     const darkPoolMarkers = generateDarkPoolMarkers(
       candles.map((c: { time: string | number; close: number }) => ({ time: c.time as any, close: c.close })),

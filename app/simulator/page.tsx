@@ -1,31 +1,40 @@
 'use client'
 
-import { useState, useEffect, useCallback, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { apiUrl } from '@/lib/apiBase'
 import LiveQuoteCard from '@/components/simulator/LiveQuoteCard'
-import SimulatorResults from '@/components/simulator/SimulatorResults'
+import SimulatorResults, { WalkForwardPanel } from '@/components/simulator/SimulatorResults'
 import StrategyBuilder from '@/components/simulator/StrategyBuilder'
 import EquityCurveChart from '@/components/backtest/EquityCurveChart'
 import InstrumentTable from '@/components/backtest/InstrumentTable'
 import TradeLog from '@/components/backtest/TradeLog'
-import type { BacktestResult } from '@/lib/backtest/engine'
+import type { BacktestResult, WalkForwardSummary } from '@/lib/backtest/engine'
 import type { StrategyConfig } from '@/lib/simulator/strategyConfig'
 import {
   DEFAULT_STRATEGY_CONFIG,
   STRATEGY_PRESETS,
   MODE_LABELS,
+  mergeStrategyConfig,
   type PresetName,
 } from '@/lib/simulator/strategyConfig'
+
+const PRESET_NAMES = ['Conservative', 'Balanced', 'Aggressive', 'Momentum'] as const
+function isPresetName(s: string | null): s is PresetName {
+  return s != null && (PRESET_NAMES as readonly string[]).includes(s)
+}
 
 // ─── Shared Types ─────────────────────────────────────────────────────────────
 
 interface BacktestData {
   runId: string
+  traceId?: string
+  audit?: Record<string, unknown>
   computedAt: string
   dataSource: 'local' | 'live'
   instruments: { ticker: string; sector: string; candles: number }[]
   results: BacktestResult[]
+  walkForward?: Array<{ ticker: string; sector: string; summary: WalkForwardSummary }>
   portfolio: {
     avgReturn: number
     avgAnnReturn: number
@@ -47,9 +56,15 @@ interface BacktestData {
 
 interface SimulatorApiResponse {
   runId: string
+  traceId?: string
+  audit?: Record<string, unknown>
   computedAt: string
   config: StrategyConfig
   results: BacktestResult[]
+  walkForwardByTicker?: Record<string, WalkForwardSummary | null>
+  paperAdvisory?: Record<string, { csp: string; cc: string }>
+  entryExitZonesByTicker?: Record<string, { disclaimer: string; bands: Array<{ id: string; label: string; lower: number; upper: number; note: string }> }>
+  paperIncomePreview?: Record<string, { pnl: string; detail: string }>
   portfolio: {
     avgReturn: number; avgAnnReturn: number; bnhAvg: number; alpha: number
     sharpeRatio: number | null; sortinoRatio: number | null; maxPortfolioDd: number
@@ -65,6 +80,7 @@ interface SimulatorApiResponse {
 }
 
 type CommandMode = 'live' | 'backtest'
+type UxMode = 'beginner' | 'expert'
 
 // ─── Strategy Mode Descriptions ──────────────────────────────────────────────
 
@@ -140,7 +156,7 @@ function SimulatorPageContent() {
   const initialConfig = (() => {
     if (urlPreset) {
       const preset = STRATEGY_PRESETS.find(p => p.name.toLowerCase() === urlPreset.toLowerCase())
-      return preset?.config ?? DEFAULT_STRATEGY_CONFIG
+      return mergeStrategyConfig(preset?.config)
     }
     return DEFAULT_STRATEGY_CONFIG
   })()
@@ -149,6 +165,9 @@ function SimulatorPageContent() {
   const [mode, setMode] = useState<CommandMode>(urlMode)
   const [config, setConfig] = useState<StrategyConfig>(initialConfig)
   const [configSource, setConfigSource] = useState<'preset' | 'custom'>(urlPreset ? 'preset' : 'custom')
+  const [riskPreset, setRiskPreset] = useState<PresetName>(() =>
+    isPresetName(urlPreset) ? urlPreset : 'Balanced',
+  )
   const [watchlist, setWatchlist] = useState<string[]>(urlTickers.length > 0 ? urlTickers : DEFAULT_WATCHLIST)
   const [tickerQuery, setTickerQuery] = useState('')
   const [showGuide, setShowGuide] = useState(false)
@@ -171,11 +190,21 @@ function SimulatorPageContent() {
   const [backtestError, setBacktestError] = useState<string | null>(null)
   const [backtestRunning, setBacktestRunning] = useState(false)
   const [backtestTab, setBacktestTab] = useState<'overview' | 'instruments' | 'trades' | 'signals' | 'analysis'>('overview')
+  const [uxMode, setUxMode] = useState<UxMode>('beginner')
+  const beginnerAbortRef = useRef<AbortController | null>(null)
+  const liveRefreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [commandBusy, setCommandBusy] = useState(false)
+  const [commandFullOpt, setCommandFullOpt] = useState<Record<string, unknown> | null>(null)
+  const [commandWfOpt, setCommandWfOpt] = useState<Record<string, unknown> | null>(null)
+  const [commandError, setCommandError] = useState<string | null>(null)
 
   // Shared refresh state
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null)
   const [secondsAgo, setSecondsAgo] = useState(0)
   const [statusMessage, setStatusMessage] = useState('')
+
+  const configFingerprint = useMemo(() => JSON.stringify(config), [config])
+  const watchlistKey = watchlist.join(',')
 
   // Live quote refresh
   const refreshLiveQuotes = useCallback(async () => {
@@ -194,22 +223,36 @@ function SimulatorPageContent() {
     } catch { /* silent */ }
   }, [config, watchlist])
 
+  const scheduleLiveQuotesRefresh = useCallback(() => {
+    if (liveRefreshDebounceRef.current) clearTimeout(liveRefreshDebounceRef.current)
+    liveRefreshDebounceRef.current = setTimeout(() => {
+      liveRefreshDebounceRef.current = null
+      void refreshLiveQuotes()
+    }, 650)
+  }, [refreshLiveQuotes])
+
   // Clock tick
   useEffect(() => {
     const iv = setInterval(() => setSecondsAgo(s => s + 1), 1000)
     return () => clearInterval(iv)
   }, [])
 
-  // Auto-refresh live quotes every 60s
+  // Auto-refresh live quotes every 60s (debounced path also coalesces bursts)
   useEffect(() => {
-    const iv = setInterval(() => { if (watchlist.length > 0) void refreshLiveQuotes() }, 60_000)
+    const iv = setInterval(() => {
+      if (watchlist.length > 0) scheduleLiveQuotesRefresh()
+    }, 60_000)
     return () => clearInterval(iv)
-  }, [refreshLiveQuotes, watchlist])
+  }, [scheduleLiveQuotesRefresh, watchlist])
 
-  // Initial live fetch
+  // Debounced refresh when config or watchlist changes (live orchestration)
   useEffect(() => {
-    if (watchlist.length > 0) void refreshLiveQuotes()
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+    if (watchlist.length === 0) return
+    scheduleLiveQuotesRefresh()
+    return () => {
+      if (liveRefreshDebounceRef.current) clearTimeout(liveRefreshDebounceRef.current)
+    }
+  }, [watchlistKey, configFingerprint, scheduleLiveQuotesRefresh, watchlist.length])
 
   // ── Run Live Simulation ─────────────────────────────────────────────────────
   const runLiveSimulation = async () => {
@@ -224,7 +267,12 @@ function SimulatorPageContent() {
       const res = await fetch(apiUrl('/api/simulator/run'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ config, tickers: watchlist, lookbackDays: config.backtestPeriod.lookbackYears * 252 }),
+        body: JSON.stringify({
+          config,
+          tickers: watchlist,
+          lookbackDays: config.backtestPeriod.lookbackYears * 252,
+          includeOptionsFeatures: true,
+        }),
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -244,7 +292,7 @@ function SimulatorPageContent() {
   }
 
   // ── Run Historical Backtest ─────────────────────────────────────────────────
-  const runBacktest = async () => {
+  const runBacktest = useCallback(async (signal?: AbortSignal) => {
     if (watchlist.length === 0) {
       setBacktestError('Add at least one ticker to your watchlist.')
       return
@@ -262,6 +310,7 @@ function SimulatorPageContent() {
           tickers: watchlist,
           lookbackDays: config.backtestPeriod.lookbackYears * 252,
         }),
+        signal,
       })
       if (!res.ok) {
         const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -271,13 +320,88 @@ function SimulatorPageContent() {
       setBacktestData(json)
       setBacktestTab('overview')
     } catch (e) {
+      if (e instanceof Error && e.name === 'AbortError') return
       setBacktestError(e instanceof Error ? e.message : 'Backtest failed')
     } finally {
       setBacktestRunning(false)
       setBacktestLoading(false)
       setStatusMessage('')
     }
-  }
+  }, [config, watchlist])
+
+  const runFullCommandCenter = useCallback(async () => {
+    if (watchlist.length === 0 || mode !== 'backtest') {
+      setCommandError('Add tickers and switch to Historical Backtest.')
+      return
+    }
+    setCommandBusy(true)
+    setCommandError(null)
+    setCommandFullOpt(null)
+    setCommandWfOpt(null)
+    setBacktestRunning(true)
+    setBacktestError(null)
+    try {
+      const btRes = await fetch(apiUrl('/api/backtest'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          config,
+          tickers: watchlist,
+          lookbackDays: config.backtestPeriod.lookbackYears * 252,
+        }),
+      })
+      if (!btRes.ok) {
+        const err = await btRes.json().catch(() => ({ error: `HTTP ${btRes.status}` }))
+        throw new Error(err.error ?? `HTTP ${btRes.status}`)
+      }
+      const btJson = (await btRes.json()) as BacktestData
+      setBacktestData(btJson)
+      setBacktestTab('overview')
+
+      const primary = watchlist[0]
+      const optBody = {
+        ticker: primary,
+        sector: 'Custom',
+        config,
+        preset: riskPreset,
+        lookbackDays: config.backtestPeriod.lookbackYears * 252,
+        maxIterations: 40,
+        maxMs: 18_000,
+      }
+      const o1 = await fetch(apiUrl('/api/optimize'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...optBody, objective: 'full' }),
+      })
+      if (o1.ok) setCommandFullOpt((await o1.json()) as Record<string, unknown>)
+      const o2 = await fetch(apiUrl('/api/optimize'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...optBody, objective: 'walk_forward' }),
+      })
+      if (o2.ok) setCommandWfOpt((await o2.json()) as Record<string, unknown>)
+    } catch (e) {
+      setCommandError(e instanceof Error ? e.message : 'Command Center run failed')
+    } finally {
+      setCommandBusy(false)
+      setBacktestRunning(false)
+    }
+  }, [config, watchlist, mode, riskPreset])
+
+  // Beginner: auto-run historical backtest when watchlist / config stabilizes
+  useEffect(() => {
+    if (uxMode !== 'beginner' || mode !== 'backtest' || watchlist.length === 0) return
+    beginnerAbortRef.current?.abort()
+    const ac = new AbortController()
+    beginnerAbortRef.current = ac
+    const timer = window.setTimeout(() => {
+      void runBacktest(ac.signal)
+    }, 900)
+    return () => {
+      window.clearTimeout(timer)
+      ac.abort()
+    }
+  }, [uxMode, mode, watchlistKey, configFingerprint, runBacktest])
 
   // ── Watchlist management ────────────────────────────────────────────────────
   const addTicker = (ticker: string) => {
@@ -348,6 +472,7 @@ function SimulatorPageContent() {
             </div>
 
             {/* Center: mode toggle */}
+            <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800">
               <button
                 onClick={() => setMode('live')}
@@ -369,6 +494,33 @@ function SimulatorPageContent() {
               >
                 Historical Backtest
               </button>
+            </div>
+
+            <div className="flex items-center gap-1 bg-slate-900 rounded-xl p-1 border border-slate-800">
+              <span className="text-[10px] text-slate-500 px-1 hidden sm:inline">UX</span>
+              <button
+                type="button"
+                onClick={() => setUxMode('beginner')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                  uxMode === 'beginner'
+                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Beginner
+              </button>
+              <button
+                type="button"
+                onClick={() => setUxMode('expert')}
+                className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+                  uxMode === 'expert'
+                    ? 'bg-violet-500/20 text-violet-300 border border-violet-500/40'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                Expert
+              </button>
+            </div>
             </div>
 
             {/* Right: status + refresh */}
@@ -398,7 +550,7 @@ function SimulatorPageContent() {
               {/* Refresh (live mode only) */}
               {mode === 'live' && (
                 <button
-                  onClick={() => void refreshLiveQuotes()}
+                  onClick={() => scheduleLiveQuotesRefresh()}
                   className="px-3 py-1.5 bg-slate-800 text-slate-300 text-xs rounded-lg border border-slate-700 hover:bg-slate-700"
                 >
                   Refresh
@@ -472,8 +624,13 @@ function SimulatorPageContent() {
               {showConfig && (
                 <StrategyBuilder
                   initialConfig={config}
+                  uxMode={uxMode}
                   isRunning={liveRunning || backtestRunning}
                   onRun={(cfg) => { setConfig(cfg); setConfigSource('custom') }}
+                  onPresetSelect={name => {
+                    setRiskPreset(name)
+                    setConfigSource('preset')
+                  }}
                   onReset={() => { setConfig(DEFAULT_STRATEGY_CONFIG); setConfigSource('custom') }}
                 />
               )}
@@ -565,7 +722,7 @@ function SimulatorPageContent() {
             {/* Run button — changes label by mode */}
             <button
               onClick={() => mode === 'live' ? void runLiveSimulation() : void runBacktest()}
-              disabled={liveRunning || backtestRunning || watchlist.length === 0}
+              disabled={liveRunning || backtestRunning || commandBusy || watchlist.length === 0}
               className="w-full py-4 rounded-2xl font-bold text-base transition-all flex items-center justify-center gap-3
                 bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-500 hover:to-cyan-500
                 text-white shadow-lg shadow-emerald-900/40
@@ -586,6 +743,44 @@ function SimulatorPageContent() {
                 </>
               )}
             </button>
+
+            {mode === 'backtest' && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => void runFullCommandCenter()}
+                  disabled={commandBusy || backtestRunning || liveRunning || watchlist.length === 0}
+                  className="w-full py-3 rounded-xl font-semibold text-sm border border-cyan-500/40 bg-cyan-500/10 text-cyan-200 hover:bg-cyan-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {commandBusy ? 'Running full stack…' : `Full stack: backtest + optimize (${riskPreset}, ${watchlist[0] ?? '—'})`}
+                </button>
+                <p className="text-[10px] text-slate-500 leading-relaxed">
+                  One action runs portfolio backtest, bounded grid search, and walk-forward–scored search on the first watchlist ticker.
+                  Outputs are historical and illustrative only.
+                </p>
+                {commandError && (
+                  <div className="text-[10px] text-red-400">{commandError}</div>
+                )}
+                {(commandFullOpt || commandWfOpt) && (
+                  <div className="text-[10px] text-slate-400 space-y-1 font-mono bg-slate-950/40 rounded-lg p-2 border border-slate-800 max-h-40 overflow-y-auto">
+                    {commandFullOpt && (
+                      <div>
+                        <span className="text-slate-500">Grid / Calmar top: </span>
+                        {String((commandFullOpt.iterationsRun as number) ?? 0)} iter ·{' '}
+                        pareto {(Array.isArray(commandFullOpt.pareto) ? commandFullOpt.pareto.length : 0)} rows
+                      </div>
+                    )}
+                    {commandWfOpt && (
+                      <div>
+                        <span className="text-slate-500">Walk-forward search: </span>
+                        {String((commandWfOpt.iterationsRun as number) ?? 0)} iter ·{' '}
+                        wf pareto {(Array.isArray(commandWfOpt.paretoWf) ? commandWfOpt.paretoWf.length : 0)} rows
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Error */}
             {(liveError || backtestError) && (
@@ -610,6 +805,9 @@ function SimulatorPageContent() {
               results={liveResults.results}
               portfolio={liveResults.portfolio}
               config={liveResults.config}
+              walkForwardByTicker={liveResults.walkForwardByTicker}
+              paperAdvisory={liveResults.paperAdvisory}
+              entryExitZonesByTicker={liveResults.entryExitZonesByTicker}
               liveQuotes={liveResults.liveQuotes}
               computedAt={liveResults.computedAt}
               runId={liveResults.runId}
@@ -692,7 +890,7 @@ function SimulatorPageContent() {
                   <h3 className="text-sm font-semibold text-white mb-3 uppercase tracking-wider text-slate-400">Strategy Rules</h3>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 text-xs text-slate-400">
                     {[
-                      ['BUY Signal', '200EMA deviation dip zone + rising SMA + price near SMA + ≥2 confirmations (RSI<35, MACD>0, ATR%>2, BB%<0.20) → Half-Kelly (10–25%)'],
+                      ['BUY Signal', `${config.regime.smaPeriod}-period SMA deviation dip zone + rising SMA + price near SMA + ≥2 confirmations (RSI<35, MACD>0, ATR%>2, BB%<0.20) → Kelly tiers`],
                       ['HOLD', 'Confidence <55% or HEALTHY_BULL / EXTENDED_BULL → No action. Await better entry.'],
                       ['SELL Signal', 'FALLING_KNIFE or HEALTHY_BULL + RSI>70 → Exit full position'],
                       ['Stop Loss', `ATR-adaptive: ${config.stopLoss.stopLossAtrMultiplier}× ATR%, floor ${(config.stopLoss.stopLossFloor*100).toFixed(0)}%, cap ${(config.stopLoss.stopLossCeiling*100).toFixed(0)}%`],
@@ -731,10 +929,13 @@ function SimulatorPageContent() {
               </div>
             )}
 
-            {backtestTab === 'analysis' && (
-              <div className="bg-slate-900/40 rounded-xl border border-slate-800 p-6 text-center text-slate-500 text-sm">
-                Detailed analysis (walk-forward, sector attribution, risk/return map) — coming soon.
-              </div>
+            {backtestTab === 'analysis' && backtestData.results.length > 0 && (
+              <WalkForwardPanel
+                results={backtestData.results}
+                walkForwardByTicker={Object.fromEntries(
+                  (backtestData.walkForward ?? []).map(w => [w.ticker, w.summary]),
+                )}
+              />
             )}
           </div>
         )}

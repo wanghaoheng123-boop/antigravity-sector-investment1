@@ -270,7 +270,7 @@ export function backtestInstrument(
     const signal = combinedSignal(ticker, signalDate, signalPrice, lookbackCloses, lookbackBars, cfg)
 
     if (signal.action === 'BUY' && !state.openTrade) {
-      const kellyFrac = Math.min(signal.KellyFraction, 0.50)
+      const kellyFrac = Math.min(signal.KellyFraction, cfg.maxPositionWeight)
       const allocation = state.capital * kellyFrac
       // Long entries: pay slightly above the open (adverse selection / friction).
       const entryPrice = nextOpen * (1 + ENTRY_SLIPPAGE_BPS / 10000)
@@ -607,6 +607,7 @@ export function walkForwardAnalysis(
   rows: OhlcvRow[],
   trainDays = 252,
   testDays = 63,
+  config: Partial<BacktestConfig> = {},
 ): WFWWindow[] {
   // trainDays = 1 year in-sample, testDays = 1 quarter out-of-sample
   const windows: WFWWindow[] = []
@@ -622,8 +623,8 @@ export function walkForwardAnalysis(
 
     if (trainRows.length < 100 || testRows.length < 20) break
 
-    const trainResult = backtestInstrument(ticker, sector, trainRows)
-    const testResult = backtestInstrument(ticker, sector, testRows)
+    const trainResult = backtestInstrument(ticker, sector, trainRows, config)
+    const testResult = backtestInstrument(ticker, sector, testRows, config)
 
     const isAnn = annualized(trainResult.totalReturn, trainRows.length)
     const osAnn = annualized(testResult.totalReturn, testRows.length)

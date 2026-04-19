@@ -79,6 +79,14 @@ export default function RootLayout({
                   Heatmap
                   <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
                 </Link>
+                <Link href="/portfolio" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Portfolio
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
+                <Link href="/monitor" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Monitor
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
                 <Link href="/ma-deviation" className="text-xs font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1">
                   <span>200MA</span>
                   <span className="text-[9px] px-1 py-0.5 rounded bg-amber-500/20 text-amber-400 font-mono leading-none">NEW</span>

@@ -392,8 +392,8 @@ export interface PositionSizingConfig {
   /**
    * Confidence-based Kelly scaling table. Applied after the base Kelly mode calculation.
    * Allows larger positions for high-conviction signals without raising the base fraction.
-   * Must be sorted by confidenceThreshold ascending.
-   * @default [90→25%, 75→15%, 55→10%]
+   * Must be sorted by confidenceThreshold ascending (lowest tier first).
+   * @default [55→10%, 75→15%, 90→25%]
    */
   confidenceScales: ConfidenceScale[]
 }
@@ -403,9 +403,9 @@ export const DEFAULT_POSITION_SIZING_CONFIG: PositionSizingConfig = {
   fixedPositionSize: 0.10,
   maxKellyFraction: 0.25,
   confidenceScales: [
-    { confidenceThreshold: 90, kellyFraction: 0.25 },
-    { confidenceThreshold: 75, kellyFraction: 0.15 },
     { confidenceThreshold: 55, kellyFraction: 0.10 },
+    { confidenceThreshold: 75, kellyFraction: 0.15 },
+    { confidenceThreshold: 90, kellyFraction: 0.25 },
   ],
 }
 
@@ -730,7 +730,45 @@ export const DEFAULT_DISPLAY_CONFIG: DisplayConfig = {
  * }
  * ```
  */
+
+/** Schema version for migrations and audit trails (Phase 2). */
+export interface StrategyMetaConfig {
+  schemaVersion: number
+}
+
+export const DEFAULT_STRATEGY_META: StrategyMetaConfig = {
+  schemaVersion: 2,
+}
+
+/** Optional user risk ceiling — clamps engine caps when set (Phase 6). */
+export interface RiskBudgetConfig {
+  /** Max portfolio drawdown (0–1); when set, `min(stopLoss.maxDrawdownCap, this)` for backtest adapter. */
+  maxPortfolioDrawdownCap: number | null
+  /** Max single-name weight (0–1); when set, `min(stopLoss.positionCap, this)`. */
+  maxPositionCap: number | null
+}
+
+export const DEFAULT_RISK_BUDGET: RiskBudgetConfig = {
+  maxPortfolioDrawdownCap: null,
+  maxPositionCap: null,
+}
+
+/** Simulator-only: extra options-structure gates beyond `optionsFilter` (Phase 8). */
+export interface OptionsSignalFusionConfig {
+  enabled: boolean
+  /** Block equity BUY when spot is at or above call wall × (1 + this fraction). */
+  callWallProximityBlockPct: number
+}
+
+export const DEFAULT_OPTIONS_SIGNAL_FUSION: OptionsSignalFusionConfig = {
+  enabled: false,
+  callWallProximityBlockPct: 0.005,
+}
+
 export interface StrategyConfig {
+  meta: StrategyMetaConfig
+  riskBudget: RiskBudgetConfig
+  optionsSignalFusion: OptionsSignalFusionConfig
   regime: RegimeConfig
   confirmations: ConfirmationConfig
   stopLoss: StopLossConfig
@@ -744,6 +782,9 @@ export interface StrategyConfig {
 }
 
 export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
+  meta: { ...DEFAULT_STRATEGY_META },
+  riskBudget: { ...DEFAULT_RISK_BUDGET },
+  optionsSignalFusion: { ...DEFAULT_OPTIONS_SIGNAL_FUSION },
   regime: { ...DEFAULT_REGIME_CONFIG },
   confirmations: { ...DEFAULT_CONFIRMATION_CONFIG },
   stopLoss: { ...DEFAULT_STOP_LOSS_CONFIG },
@@ -754,6 +795,64 @@ export const DEFAULT_STRATEGY_CONFIG: StrategyConfig = {
   microstructureFilter: { ...DEFAULT_MICROSTRUCTURE_FILTER_CONFIG },
   backtestPeriod: { ...DEFAULT_BACKTEST_PERIOD_CONFIG },
   display: { ...DEFAULT_DISPLAY_CONFIG },
+}
+
+/** Kelly tiers sorted by increasing confidence threshold (canonical storage order). */
+export function normalizedConfidenceScales(scales: ConfidenceScale[]): ConfidenceScale[] {
+  return [...scales].sort(
+    (a, b) => a.confidenceThreshold - b.confidenceThreshold || a.kellyFraction - b.kellyFraction,
+  )
+}
+
+function confidenceScalesOrderChanged(original: ConfidenceScale[], normalized: ConfidenceScale[]): boolean {
+  if (original.length !== normalized.length) return true
+  return original.some(
+    (s, i) =>
+      s.confidenceThreshold !== normalized[i].confidenceThreshold || s.kellyFraction !== normalized[i].kellyFraction,
+  )
+}
+
+/**
+ * Ensures `positionSizing.confidenceScales` are in ascending threshold order so validation passes
+ * and legacy `toBacktestConfig` uses the minimum tier as the composite confidence floor.
+ */
+export function normalizeStrategyConfig(config: StrategyConfig): StrategyConfig {
+  const raw = config.positionSizing?.confidenceScales
+  if (!raw?.length) return config
+  const normalized = normalizedConfidenceScales(raw)
+  if (!confidenceScalesOrderChanged(raw, normalized)) return config
+  return {
+    ...config,
+    positionSizing: {
+      ...config.positionSizing,
+      confidenceScales: normalized,
+    },
+  }
+}
+
+/** Merge partial UI/API payload with defaults, then normalize Kelly tiers. */
+export function mergeStrategyConfig(partial?: Partial<StrategyConfig>): StrategyConfig {
+  const p = partial ?? {}
+  const mergedMeta = { ...DEFAULT_STRATEGY_CONFIG.meta, ...(p.meta ?? {}) }
+  mergedMeta.schemaVersion = Math.max(DEFAULT_STRATEGY_CONFIG.meta.schemaVersion, mergedMeta.schemaVersion ?? 0)
+
+  return normalizeStrategyConfig({
+    ...DEFAULT_STRATEGY_CONFIG,
+    ...p,
+    meta: mergedMeta,
+    riskBudget: { ...DEFAULT_STRATEGY_CONFIG.riskBudget, ...(p.riskBudget ?? {}) },
+    optionsSignalFusion: { ...DEFAULT_STRATEGY_CONFIG.optionsSignalFusion, ...(p.optionsSignalFusion ?? {}) },
+    regime: { ...DEFAULT_STRATEGY_CONFIG.regime, ...(p.regime ?? {}) },
+    confirmations: { ...DEFAULT_STRATEGY_CONFIG.confirmations, ...(p.confirmations ?? {}) },
+    stopLoss: { ...DEFAULT_STRATEGY_CONFIG.stopLoss, ...(p.stopLoss ?? {}) },
+    positionSizing: { ...DEFAULT_STRATEGY_CONFIG.positionSizing, ...(p.positionSizing ?? {}) },
+    transactionCosts: { ...DEFAULT_STRATEGY_CONFIG.transactionCosts, ...(p.transactionCosts ?? {}) },
+    strategyMode: { ...DEFAULT_STRATEGY_CONFIG.strategyMode, ...(p.strategyMode ?? {}) },
+    optionsFilter: { ...DEFAULT_STRATEGY_CONFIG.optionsFilter, ...(p.optionsFilter ?? {}) },
+    microstructureFilter: { ...DEFAULT_STRATEGY_CONFIG.microstructureFilter, ...(p.microstructureFilter ?? {}) },
+    backtestPeriod: { ...DEFAULT_STRATEGY_CONFIG.backtestPeriod, ...(p.backtestPeriod ?? {}) },
+    display: { ...DEFAULT_STRATEGY_CONFIG.display, ...(p.display ?? {}) },
+  })
 }
 
 // ─── Strategy Validation ───────────────────────────────────────────────────────
@@ -796,7 +895,7 @@ export interface StrategyValidationWarning {
  *   - Stop-loss floor > ceiling (physically impossible)
  *   - ATR multiplier <= 0 (would give zero or negative stop distance)
  *   - minConfirmations > total available confirmations (4)
- *   - Confidence scales not sorted ascending (will never trigger lower entries)
+ *   - Kelly `confidenceScales` out of order (auto-normalized at merge; warning only)
  *   - Kelly mode is 'fixed' but fixedPositionSize = 0 (division by zero)
  *   - Transaction cost > 100 bps (unrealistic for institutional accounts)
  *   - Options / microstructure filters enabled but no data source configured
@@ -816,6 +915,37 @@ export function validateStrategyConfig(config: Partial<StrategyConfig>): Strateg
 
   const pushWarning = (path: string, message: string) =>
     warnings.push({ path, message })
+
+  const meta = config.meta ?? DEFAULT_STRATEGY_META
+  if (meta.schemaVersion != null && meta.schemaVersion < 2) {
+    pushWarning('meta.schemaVersion', `schemaVersion ${meta.schemaVersion} is below current (2); merge with defaults before relying on new fields.`)
+  }
+
+  const rb = config.riskBudget ?? DEFAULT_RISK_BUDGET
+  if (rb.maxPortfolioDrawdownCap != null) {
+    if (rb.maxPortfolioDrawdownCap < 0.05 || rb.maxPortfolioDrawdownCap > 0.55) {
+      pushWarning(
+        'riskBudget.maxPortfolioDrawdownCap',
+        `Unusual portfolio drawdown cap (${(rb.maxPortfolioDrawdownCap * 100).toFixed(1)}%). Typical range 5–40%.`,
+      )
+    }
+  }
+  if (rb.maxPositionCap != null) {
+    if (rb.maxPositionCap < 0.05 || rb.maxPositionCap > 0.5) {
+      pushWarning(
+        'riskBudget.maxPositionCap',
+        `Unusual per-name cap (${(rb.maxPositionCap * 100).toFixed(1)}%). Typical range 5–30%.`,
+      )
+    }
+  }
+
+  const fusion = config.optionsSignalFusion ?? DEFAULT_OPTIONS_SIGNAL_FUSION
+  if (fusion.callWallProximityBlockPct < 0 || fusion.callWallProximityBlockPct > 0.08) {
+    pushWarning(
+      'optionsSignalFusion.callWallProximityBlockPct',
+      'callWallProximityBlockPct is usually a few basis points to ~2%; very large values suppress most buys near walls.',
+    )
+  }
 
   const regime = (config.regime ?? {}) as RegimeConfig
   const confirmations = (config.confirmations ?? {}) as ConfirmationConfig
@@ -1004,12 +1134,20 @@ export function validateStrategyConfig(config: Partial<StrategyConfig>): Strateg
     )
   }
 
-  const scales = positionSizing.confidenceScales ?? DEFAULT_POSITION_SIZING_CONFIG.confidenceScales
+  const rawScales = positionSizing.confidenceScales ?? DEFAULT_POSITION_SIZING_CONFIG.confidenceScales
+  const scales = normalizedConfidenceScales(rawScales)
+  if (rawScales.length > 0 && confidenceScalesOrderChanged(rawScales, scales)) {
+    pushWarning(
+      'positionSizing.confidenceScales',
+      'Kelly confidence tiers were not listed in ascending order by confidenceThreshold; they are interpreted in sorted order (same as runtime Kelly sizing).',
+    )
+  }
+
   for (let i = 1; i < scales.length; i++) {
-    if (scales[i].confidenceThreshold < scales[i - 1].confidenceThreshold) {
-      pushError(
+    if (scales[i].confidenceThreshold === scales[i - 1].confidenceThreshold) {
+      pushWarning(
         'positionSizing.confidenceScales',
-        `confidenceScales must be sorted by confidenceThreshold ascending: entry ${i} (${scales[i].confidenceThreshold}%) is less than entry ${i - 1} (${scales[i - 1].confidenceThreshold}%)`,
+        `Duplicate confidenceThreshold ${scales[i].confidenceThreshold}% — later tier overwrites earlier when sizing.`,
       )
     }
   }
@@ -1121,7 +1259,8 @@ export type PresetName = 'Conservative' | 'Balanced' | 'Aggressive' | 'Momentum'
 export interface StrategyPreset {
   name: PresetName
   description: string
-  config: StrategyConfig
+  /** Partial overrides merged with `DEFAULT_STRATEGY_CONFIG` (includes meta / riskBudget defaults). */
+  config: Partial<StrategyConfig>
 }
 
 /**
@@ -1157,9 +1296,9 @@ export const STRATEGY_PRESETS: StrategyPreset[] = [
         kellyMode: 'quarter',
         maxKellyFraction: 0.10,
         confidenceScales: [
-          { confidenceThreshold: 90, kellyFraction: 0.10 },
-          { confidenceThreshold: 75, kellyFraction: 0.07 },
           { confidenceThreshold: 55, kellyFraction: 0.05 },
+          { confidenceThreshold: 75, kellyFraction: 0.07 },
+          { confidenceThreshold: 90, kellyFraction: 0.10 },
         ],
       },
       transactionCosts: { ...DEFAULT_TRANSACTION_COST_CONFIG, txCostBpsPerSide: 15 }, // conservative cost estimate
@@ -1212,9 +1351,9 @@ export const STRATEGY_PRESETS: StrategyPreset[] = [
         kellyMode: 'full',
         maxKellyFraction: 0.40,
         confidenceScales: [
-          { confidenceThreshold: 90, kellyFraction: 0.40 },
-          { confidenceThreshold: 75, kellyFraction: 0.25 },
           { confidenceThreshold: 55, kellyFraction: 0.15 },
+          { confidenceThreshold: 75, kellyFraction: 0.25 },
+          { confidenceThreshold: 90, kellyFraction: 0.40 },
         ],
       },
       transactionCosts: { ...DEFAULT_TRANSACTION_COST_CONFIG, txCostBpsPerSide: 8 },
@@ -1257,9 +1396,9 @@ export const STRATEGY_PRESETS: StrategyPreset[] = [
         kellyMode: 'half',
         maxKellyFraction: 0.25,
         confidenceScales: [
-          { confidenceThreshold: 90, kellyFraction: 0.25 },
-          { confidenceThreshold: 75, kellyFraction: 0.15 },
           { confidenceThreshold: 55, kellyFraction: 0.08 },
+          { confidenceThreshold: 75, kellyFraction: 0.15 },
+          { confidenceThreshold: 90, kellyFraction: 0.25 },
         ],
       },
       transactionCosts: { ...DEFAULT_TRANSACTION_COST_CONFIG },
@@ -1297,7 +1436,7 @@ export function applyStrategyPreset(preset: PresetName | string): StrategyConfig
       `Unknown strategy preset "${preset}". Valid presets: ${valid}`,
     )
   }
-  return found.config
+  return mergeStrategyConfig(found.config)
 }
 
 // ─── BacktestConfig adapter ────────────────────────────────────────────────────
@@ -1313,13 +1452,26 @@ export function applyStrategyPreset(preset: PresetName | string): StrategyConfig
  * @returns A BacktestConfig-compatible object
  */
 export function toBacktestConfig(config: Partial<StrategyConfig>): BacktestConfig {
+  const scales = normalizedConfidenceScales(
+    config.positionSizing?.confidenceScales ?? DEFAULT_POSITION_SIZING_CONFIG.confidenceScales,
+  )
+  const baseMdd = config.stopLoss?.maxDrawdownCap ?? DEFAULT_STOP_LOSS_CONFIG.maxDrawdownCap
+  const rbMdd = config.riskBudget?.maxPortfolioDrawdownCap
+  const maxDrawdownCap =
+    rbMdd != null && Number.isFinite(rbMdd) ? Math.min(baseMdd, rbMdd) : baseMdd
+
+  const basePos = config.stopLoss?.positionCap ?? DEFAULT_STOP_LOSS_CONFIG.positionCap
+  const rbPos = config.riskBudget?.maxPositionCap
+  const maxPositionWeight =
+    rbPos != null && Number.isFinite(rbPos) ? Math.min(basePos, rbPos) : basePos
+
   return {
     initialCapital: config.display?.initialCapital ?? DEFAULT_DISPLAY_CONFIG.initialCapital,
     stopLossPct: config.stopLoss?.stopLossCeiling ?? DEFAULT_STOP_LOSS_CONFIG.stopLossCeiling,
-    confidenceThreshold:
-      config.positionSizing?.confidenceScales?.[0]?.confidenceThreshold ??
-      55,
-    maxDrawdownCap: config.stopLoss?.maxDrawdownCap ?? DEFAULT_STOP_LOSS_CONFIG.maxDrawdownCap,
+    /** Lowest Kelly tier threshold = minimum composite confidence for BUY sizing path. */
+    confidenceThreshold: scales[0]?.confidenceThreshold ?? 55,
+    maxDrawdownCap,
+    maxPositionWeight,
     halfKelly:
       (config.positionSizing?.kellyMode ?? DEFAULT_POSITION_SIZING_CONFIG.kellyMode) === 'half' ||
       (config.positionSizing?.kellyMode ?? DEFAULT_POSITION_SIZING_CONFIG.kellyMode) === 'quarter',

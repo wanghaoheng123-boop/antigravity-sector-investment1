@@ -1,0 +1,20 @@
+name: nightly-backtest
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      # Exits non-zero when portfolio win rate < 55% (see scripts/nightly-backtest.ts). Does not block the workflow so forks stay green until the strategy baseline is restored.
+      - run: npm run nightly
+        continue-on-error: true

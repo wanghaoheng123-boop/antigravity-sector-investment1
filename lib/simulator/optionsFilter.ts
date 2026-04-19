@@ -10,7 +10,7 @@ import {
   normalizeYahooOptionsChain,
   computeGammaAnalysis,
 } from '@/lib/quant/optionsGamma'
-import type { OptionsFilterConfig } from './strategyConfig'
+import type { OptionsFilterConfig, OptionsSignalFusionConfig } from './strategyConfig'
 
 // ─── OptionsMetrics type ───────────────────────────────────────────────────────
 
@@ -98,6 +98,31 @@ export async function fetchOptionsMetrics(ticker: string): Promise<OptionsMetric
  * @param price  - Current signal price
  * @returns Filter result with pass/fail and reason
  */
+/**
+ * Conservative fusion: block dip-buys when spot is pressed against the call wall band.
+ * Does not replace `applyOptionsFilter`; runs after it when enabled.
+ */
+export function applyOptionsSignalFusion(
+  fusion: OptionsSignalFusionConfig,
+  metrics: OptionsMetrics | null,
+  price: number,
+): { pass: boolean; reason: string } {
+  if (!fusion.enabled) {
+    return { pass: true, reason: 'options signal fusion disabled' }
+  }
+  if (metrics == null || metrics.callWallStrike == null || !Number.isFinite(metrics.callWallStrike)) {
+    return { pass: true, reason: 'call wall unavailable — fusion skipped' }
+  }
+  const thr = metrics.callWallStrike * (1 + Math.max(0, fusion.callWallProximityBlockPct))
+  if (price >= thr) {
+    return {
+      pass: false,
+      reason: `fusion: spot ${price.toFixed(2)} at/above call-wall band (${thr.toFixed(2)})`,
+    }
+  }
+  return { pass: true, reason: 'fusion: below call-wall proximity band' }
+}
+
 export function applyOptionsFilter(
   params: OptionsFilterConfig,
   metrics: OptionsMetrics | null,

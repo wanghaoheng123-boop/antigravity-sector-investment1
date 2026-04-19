@@ -8,6 +8,7 @@ import {
   validateStrategyConfig,
   applyStrategyPreset,
   DEFAULT_STRATEGY_CONFIG,
+  mergeStrategyConfig,
   STRATEGY_PRESETS,
   DEFAULT_DEVIATION_ZONES,
   type StopLossMode,
@@ -21,8 +22,12 @@ import { apiUrl } from '@/lib/apiBase'
 interface StrategyBuilderProps {
   onRun: (config: StrategyConfig) => void
   onReset?: () => void
+  /** Fired when user clicks a named risk preset (for optimizer axes / Command Center). */
+  onPresetSelect?: (presetName: PresetName) => void
   initialConfig?: Partial<StrategyConfig>
   isRunning?: boolean
+  /** When `expert`, the Advanced JSON editor starts expanded. */
+  uxMode?: 'beginner' | 'expert'
 }
 
 // ─── Theme constants ───────────────────────────────────────────────────────────
@@ -893,12 +898,23 @@ function AdvancedTab({ config, onChange }: AdvancedTabProps) {
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function StrategyBuilder({ onRun, onReset, initialConfig, isRunning = false }: StrategyBuilderProps) {
+export default function StrategyBuilder({
+  onRun,
+  onReset,
+  onPresetSelect,
+  initialConfig,
+  isRunning = false,
+  uxMode = 'beginner',
+}: StrategyBuilderProps) {
   const [activeTab, setActiveTab] = useState<TabKey>('Regime & MA')
-  const [config, setConfig] = useState<StrategyConfig>(() => ({
-    ...DEFAULT_STRATEGY_CONFIG,
-    ...initialConfig,
-  }))
+  const [config, setConfig] = useState<StrategyConfig>(() => mergeStrategyConfig(initialConfig))
+  const [expertJsonOpen, setExpertJsonOpen] = useState(uxMode === 'expert')
+  const [jsonDraft, setJsonDraft] = useState('')
+  const [jsonError, setJsonError] = useState<string | null>(null)
+
+  useEffect(() => {
+    setExpertJsonOpen(uxMode === 'expert')
+  }, [uxMode])
 
   // Live quote preview state
   const [previewTicker, setPreviewTicker] = useState('AAPL')
@@ -940,13 +956,14 @@ export default function StrategyBuilder({ onRun, onReset, initialConfig, isRunni
     try {
       const presetConfig = applyStrategyPreset(presetName)
       setConfig(presetConfig)
+      onPresetSelect?.(presetName)
     } catch (e) {
       console.error('Failed to apply preset:', e)
     }
   }
 
   const handleReset = () => {
-    setConfig({ ...DEFAULT_STRATEGY_CONFIG })
+    setConfig(mergeStrategyConfig())
     onReset?.()
   }
 
@@ -1051,6 +1068,77 @@ export default function StrategyBuilder({ onRun, onReset, initialConfig, isRunni
                 ))}
               </div>
             )}
+
+            {/* Expert: Advanced JSON */}
+            <div className="mt-4 border border-slate-800 rounded-lg overflow-hidden">
+              <button
+                type="button"
+                onClick={() => {
+                  setExpertJsonOpen(o => {
+                    const next = !o
+                    if (next) {
+                      setJsonDraft(JSON.stringify(config, null, 2))
+                      setJsonError(null)
+                    }
+                    return next
+                  })
+                }}
+                className="w-full flex items-center justify-between px-3 py-2 bg-slate-800/60 hover:bg-slate-800 text-xs text-slate-300"
+              >
+                <span>Expert · Advanced JSON</span>
+                <span className="text-slate-500">{expertJsonOpen ? '▲' : '▼'}</span>
+              </button>
+              {expertJsonOpen && (
+                <div className="p-3 space-y-2 bg-slate-950/60 border-t border-slate-800">
+                  <p className="text-[10px] text-slate-500 leading-relaxed">
+                    Paste a partial <span className="font-mono text-slate-400">StrategyConfig</span> object. It is merged with defaults and validated before applying.
+                  </p>
+                  <textarea
+                    value={jsonDraft}
+                    onChange={e => { setJsonDraft(e.target.value); setJsonError(null) }}
+                    spellCheck={false}
+                    className="w-full h-44 bg-slate-900 border border-slate-700 rounded-lg p-2 text-[11px] font-mono text-slate-200 focus:outline-none focus:border-cyan-500/40"
+                  />
+                  {jsonError && (
+                    <pre className="text-[10px] text-red-400 whitespace-pre-wrap font-mono max-h-24 overflow-y-auto">{jsonError}</pre>
+                  )}
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          const parsed = JSON.parse(jsonDraft) as Partial<StrategyConfig>
+                          const merged = mergeStrategyConfig(parsed)
+                          const v = validateStrategyConfig(merged)
+                          if (!v.valid) {
+                            setJsonError(v.errors.map(e => `${e.path}: ${e.message}`).join('\n'))
+                            return
+                          }
+                          setJsonError(null)
+                          setConfig(merged)
+                          onRun(merged)
+                        } catch (e) {
+                          setJsonError(e instanceof Error ? e.message : 'Invalid JSON')
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 hover:bg-cyan-500/30"
+                    >
+                      Apply & validate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setJsonDraft(JSON.stringify(config, null, 2))
+                        setJsonError(null)
+                      }}
+                      className="px-3 py-1.5 rounded-lg text-xs text-slate-400 border border-slate-700 hover:bg-slate-800"
+                    >
+                      Reset draft from form
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Action Buttons */}
             <div className="mt-4 flex items-center gap-3">

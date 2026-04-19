@@ -20,15 +20,19 @@ import type {
   StopLossConfig,
   PositionSizingConfig,
 } from '@/lib/simulator/strategyConfig'
-import {
-  DEFAULT_STRATEGY_CONFIG,
-  validateStrategyConfig,
-} from '@/lib/simulator/strategyConfig'
+import { mergeStrategyConfig, validateStrategyConfig, toBacktestConfig } from '@/lib/simulator/strategyConfig'
+import { walkForwardAnalysis, walkForwardSummary, type WalkForwardSummary } from '@/lib/backtest/engine'
 import {
   fetchOptionsMetrics,
   applyOptionsFilter,
+  applyOptionsSignalFusion,
   type OptionsMetrics,
 } from '@/lib/simulator/optionsFilter'
+import { deriveEntryExitZones, type EntryExitZonesPayload } from '@/lib/quant/entryExitZones'
+import { paperShortPremiumMark } from '@/lib/options/income/paperIncome'
+import type { OptionsIncomeLeg } from '@/lib/options/income/types'
+import { buildRunAudit, newTraceId, configHashFromObject, logRunEvent } from '@/lib/runAudit'
+import { clientKeyFromRequest, rateLimitHit } from '@/lib/api/simpleRateLimit'
 
 // ─── Request / Response types ──────────────────────────────────────────────────
 
@@ -36,6 +40,8 @@ interface SimulatorRequest {
   config: Partial<StrategyConfig>
   tickers: string[]
   lookbackDays?: number
+  /** When true, fetches a daily options snapshot per ticker for logging (even if options filter is off). */
+  includeOptionsFeatures?: boolean
 }
 
 interface LiveQuote {
@@ -696,6 +702,7 @@ function runSimulator(
 ): BacktestResult {
   const initialCapital = config.display?.initialCapital ?? 100_000
   const stopCfg = config.stopLoss
+  const btCfg = toBacktestConfig(config)
   const regimeWarmup = config.backtestPeriod?.warmupBars ?? config.regime.smaPeriod + 10
 
   if (rows.length < regimeWarmup + 2) {
@@ -827,7 +834,7 @@ function runSimulator(
     const eq = currentSimulatorEquity(state)
     if (eq > state.peakEquity) state.peakEquity = eq
     const dd = (state.peakEquity - eq) / state.peakEquity
-    if (dd >= stopCfg.maxDrawdownCap && state.openTrade) {
+    if (dd >= btCfg.maxDrawdownCap && state.openTrade) {
       const proceeds = state.position * signalPrice
       const netProceeds = proceeds - proceeds * txCostPct
       const pnlPct =
@@ -914,7 +921,20 @@ function runSimulator(
         continue
       }
 
-      const kellyFrac = Math.min(sig.KellyFraction, 0.50)
+      const fusionResult = applyOptionsSignalFusion(
+        config.optionsSignalFusion,
+        optionsMetrics,
+        signalPrice,
+      )
+      if (!fusionResult.pass) {
+        state.equityHistory.push(currentSimulatorEquity(state))
+        continue
+      }
+
+      const posCap = stopCfg.positionCap ?? 0.25
+      const rbCap = config.riskBudget?.maxPositionCap
+      const effCap = rbCap != null && Number.isFinite(rbCap) ? Math.min(posCap, rbCap) : posCap
+      const kellyFrac = Math.min(sig.KellyFraction, effCap)
       const allocation = state.capital * kellyFrac
       const entryPrice = nextOpen * (1 + entrySlippageBps / 10000)
       const shares = Math.floor(allocation / entryPrice)
@@ -1178,6 +1198,10 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  if (rateLimitHit(`simulator:${clientKeyFromRequest(request)}`, 30, 60_000)) {
+    return NextResponse.json({ error: 'Too many simulator requests — try again shortly.' }, { status: 429 })
+  }
+
   let body: SimulatorRequest
   try {
     body = await request.json()
@@ -1185,27 +1209,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
   }
 
-  const { config: partialConfig, tickers, lookbackDays } = body
+  const { config: partialConfig, tickers, lookbackDays, includeOptionsFeatures } = body
 
   if (!Array.isArray(tickers) || tickers.length === 0) {
     return NextResponse.json({ error: 'tickers must be a non-empty array' }, { status: 400 })
   }
 
-  // Merge with defaults
-  const config: StrategyConfig = {
-    ...DEFAULT_STRATEGY_CONFIG,
-    ...partialConfig,
-    regime: { ...DEFAULT_STRATEGY_CONFIG.regime, ...(partialConfig.regime ?? {}) },
-    confirmations: { ...DEFAULT_STRATEGY_CONFIG.confirmations, ...(partialConfig.confirmations ?? {}) },
-    stopLoss: { ...DEFAULT_STRATEGY_CONFIG.stopLoss, ...(partialConfig.stopLoss ?? {}) },
-    positionSizing: { ...DEFAULT_STRATEGY_CONFIG.positionSizing, ...(partialConfig.positionSizing ?? {}) },
-    transactionCosts: { ...DEFAULT_STRATEGY_CONFIG.transactionCosts, ...(partialConfig.transactionCosts ?? {}) },
-    strategyMode: { ...DEFAULT_STRATEGY_CONFIG.strategyMode, ...(partialConfig.strategyMode ?? {}) },
-    optionsFilter: { ...DEFAULT_STRATEGY_CONFIG.optionsFilter, ...(partialConfig.optionsFilter ?? {}) },
-    microstructureFilter: { ...DEFAULT_STRATEGY_CONFIG.microstructureFilter, ...(partialConfig.microstructureFilter ?? {}) },
-    backtestPeriod: { ...DEFAULT_STRATEGY_CONFIG.backtestPeriod, ...(partialConfig.backtestPeriod ?? {}) },
-    display: { ...DEFAULT_STRATEGY_CONFIG.display, ...(partialConfig.display ?? {}) },
-  }
+  const config: StrategyConfig = mergeStrategyConfig(partialConfig)
 
   // Validate config
   const validation = validateStrategyConfig(config)
@@ -1217,7 +1227,8 @@ export async function POST(request: Request) {
   }
 
   const days = lookbackDays ?? config.backtestPeriod.lookbackYears * 252
-  const runId = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`
+  const traceId = newTraceId('sim')
+  const runId = traceId
 
   // Fetch OHLCV data for all tickers
   const ohlcvResults = await fetchWithRateLimit(tickers, t => fetchYahooOhlcv(t, days))
@@ -1225,17 +1236,27 @@ export async function POST(request: Request) {
   const tickerInfos: Array<{ ticker: string; sector: string; candles: number; success: boolean; error?: string }> = []
   const results: BacktestResult[] = []
   const tickersWithData: string[] = []
+  const walkForwardByTicker: Record<string, WalkForwardSummary | null> = {}
+  const paperAdvisory: Record<string, { csp: string; cc: string }> = {}
+  const optionsFeaturesByTicker: Record<string, Record<string, number | string | null>> = {}
+  const entryExitZonesByTicker: Record<string, EntryExitZonesPayload> = {}
+  const paperIncomePreview: Record<string, { pnl: string; detail: string }> = {}
 
-  // Fetch options metrics if options filter is enabled (max 2 concurrent)
   const useOptionsFilter = config.optionsFilter?.useOptionsFilter ?? false
+  const includeFeatures = includeOptionsFeatures === true
+  const needOptionsData =
+    useOptionsFilter || config.optionsSignalFusion.enabled || includeFeatures
   let optionsMetricsMap: Record<string, OptionsMetrics | null> = {}
 
-  if (useOptionsFilter) {
+  if (needOptionsData) {
     const optionsResults = await fetchWithRateLimit(tickers, t => fetchOptionsMetrics(t))
     for (const { ticker, result } of optionsResults) {
       optionsMetricsMap[ticker] = result
     }
   }
+
+  const btCfg = toBacktestConfig(config)
+  const MIN_WF = 315
 
   for (const { ticker, result: rows, error } of ohlcvResults) {
     const sector = getSector(ticker)
@@ -1250,6 +1271,61 @@ export async function POST(request: Request) {
       const optionsMetrics = optionsMetricsMap[ticker] ?? null
       const result = runSimulator(ticker, sector, rows, config, optionsMetrics)
       results.push(result)
+      walkForwardByTicker[ticker] =
+        rows.length >= MIN_WF
+          ? walkForwardSummary(walkForwardAnalysis(ticker, sector, rows, 252, 63, btCfg))
+          : null
+      if (optionsMetrics) {
+        optionsFeaturesByTicker[ticker] = {
+          asOf: new Date().toISOString(),
+          spotPrice: optionsMetrics.spotPrice,
+          gammaFlipStrike: optionsMetrics.gammaFlipStrike,
+          callWallStrike: optionsMetrics.callWallStrike,
+          putWallStrike: optionsMetrics.putWallStrike,
+          maxPainStrike: optionsMetrics.maxPainStrike,
+          totalGammaExposure: optionsMetrics.totalGammaExposure,
+          putCallRatio: optionsMetrics.putCallRatio,
+        }
+      }
+
+      const closes = rows.map(r => r.close)
+      const barsForAtr = rows.map(({ open, high, low, close }) => ({ open, high, low, close }))
+      const regimeSmaVal = sma(closes, config.regime.smaPeriod)
+      const atrSeries = atr(barsForAtr, config.stopLoss.stopLossAtrPeriod)
+      const lastAtr = atrSeries[atrSeries.length - 1]
+      const lastClose = rows[rows.length - 1].close
+      const atrPct =
+        Number.isFinite(lastAtr) && lastClose > 0 ? (lastAtr / lastClose) * 100 : null
+      entryExitZonesByTicker[ticker] = deriveEntryExitZones({
+        spot: lastClose,
+        regimeSma: regimeSmaVal,
+        atrPct,
+        putWallStrike: optionsMetrics?.putWallStrike ?? null,
+        callWallStrike: optionsMetrics?.callWallStrike ?? null,
+      })
+
+      if (useOptionsFilter && optionsMetrics) {
+        paperAdvisory[ticker] = {
+          csp:
+            `Paper cash-secured put (advisory only, not in equity PnL): spot ~${optionsMetrics.spotPrice.toFixed(2)}; put wall ~${optionsMetrics.putWallStrike ?? 'n/a'}. IV may be stale; no assignment model.`,
+          cc: `Paper covered call (advisory only): max pain ~${optionsMetrics.maxPainStrike ?? 'n/a'}; call wall ~${optionsMetrics.callWallStrike ?? 'n/a'}.`,
+        }
+      }
+
+      if (optionsMetrics?.putWallStrike != null && Number.isFinite(optionsMetrics.putWallStrike)) {
+        const leg: OptionsIncomeLeg = {
+          id: `${ticker}_csp_preview`,
+          kind: 'csp',
+          underlying: ticker,
+          premiumPerShare: Math.max(0.01, optionsMetrics.spotPrice * 0.008),
+          shortStrike: optionsMetrics.putWallStrike,
+          longStrike: null,
+          expiryIso: new Date(Date.now() + 21 * 86400000).toISOString().split('T')[0],
+          contracts: 1,
+          collateralCash: optionsMetrics.putWallStrike * 100,
+        }
+        paperIncomePreview[ticker] = paperShortPremiumMark(leg, lastClose, { allowAssignment: false })
+      }
     } catch (e) {
       console.error(`[simulator/run] Error running ${ticker}:`, e)
       tickerInfos.push({ ticker, sector, candles: rows.length, success: false, error: String(e) })
@@ -1265,11 +1341,40 @@ export async function POST(request: Request) {
     if (quote) liveQuotes[ticker] = quote
   }
 
+  let firstBarUnix: number | undefined
+  let lastBarUnix: number | undefined
+  for (const row of ohlcvResults) {
+    if (row.result && row.result.length > 1) {
+      firstBarUnix = row.result[0].time
+      lastBarUnix = row.result[row.result.length - 1].time
+      break
+    }
+  }
+
+  const audit = buildRunAudit({
+    runId: traceId,
+    traceId,
+    configHash: configHashFromObject(config),
+    dataWindow:
+      firstBarUnix != null && lastBarUnix != null ? { firstBarUnix, lastBarUnix } : undefined,
+    iterationsRun: results.length,
+    dataSource: 'yahoo_finance',
+  })
+
+  logRunEvent('info', 'simulator_complete', {
+    traceId,
+    runId: traceId,
+    iterationsRun: results.length,
+    dataSource: 'yahoo_finance',
+  })
+
   return NextResponse.json(
     {
       runId,
+      traceId,
       computedAt: new Date().toISOString(),
       dataSource: 'yahoo_finance',
+      audit,
       config,
       tickers: tickerInfos,
       results,
@@ -1278,6 +1383,14 @@ export async function POST(request: Request) {
         ? undefined
         : { valid: false, errors: validation.errors, warnings: validation.warnings },
       liveQuotes,
+      walkForwardByTicker,
+      paperAdvisory: Object.keys(paperAdvisory).length > 0 ? paperAdvisory : undefined,
+      optionsFeaturesByTicker:
+        Object.keys(optionsFeaturesByTicker).length > 0 ? optionsFeaturesByTicker : undefined,
+      entryExitZonesByTicker:
+        Object.keys(entryExitZonesByTicker).length > 0 ? entryExitZonesByTicker : undefined,
+      paperIncomePreview:
+        Object.keys(paperIncomePreview).length > 0 ? paperIncomePreview : undefined,
     },
     {
       headers: {
