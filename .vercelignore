@@ -1,0 +1,3 @@
+# Local DB artifacts (Google Drive / dev); never upload to Vercel
+*.db
+*.db-journal
