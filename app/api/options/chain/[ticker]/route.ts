@@ -47,11 +47,37 @@ export async function GET(
       return NextResponse.json({ error: `Invalid spot price for ${ticker}` }, { status: 422 })
     }
 
+    const mergedCalls = [...(optionsResult.calls ?? [])]
+    const mergedPuts = [...(optionsResult.puts ?? [])]
+    if ((mergedCalls.length + mergedPuts.length) < 50 && (optionsResult.expirationDates?.length ?? 0) > 0) {
+      const nearExpiries = optionsResult.expirationDates.slice(0, 6)
+      const chainByExpiry = await Promise.all(
+        nearExpiries.map(async (expTs) => {
+          try {
+            const leg = await YahooFinance.options(ticker, { date: expTs }) as {
+              calls: Record<string, unknown>[]
+              puts: Record<string, unknown>[]
+            }
+            return {
+              calls: (leg.calls ?? []).map((c) => ({ ...c, expiration: expTs })),
+              puts: (leg.puts ?? []).map((p) => ({ ...p, expiration: expTs })),
+            }
+          } catch {
+            return { calls: [], puts: [] }
+          }
+        }),
+      )
+      for (const slice of chainByExpiry) {
+        mergedCalls.push(...slice.calls)
+        mergedPuts.push(...slice.puts)
+      }
+    }
+
     // 2. Normalize options chain
     const rawChain = {
       expirationDates: optionsResult.expirationDates ?? [],
-      calls: optionsResult.calls ?? [],
-      puts: optionsResult.puts ?? [],
+      calls: mergedCalls,
+      puts: mergedPuts,
     }
     const expiryChain = normalizeYahooOptionsChain(ticker, spotPrice, rawChain)
 

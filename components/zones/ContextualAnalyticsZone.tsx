@@ -29,6 +29,20 @@ interface OptionsIntelligencePayload {
   confidence: 'high' | 'medium' | 'low'
   confidenceReason: string
   entryBands: EntryBand[]
+  sellPutSweetRange?: {
+    low: number
+    high: number
+    center: number
+    suggestedStrike: number | null
+    rationale: string
+  }
+  sellCallSweetRange?: {
+    low: number
+    high: number
+    center: number
+    suggestedStrike: number | null
+    rationale: string
+  }
   sellPutCandidates: Candidate[]
   sellCallCandidates: Candidate[]
   error?: string
@@ -126,6 +140,37 @@ export default function ContextualAnalyticsZone({ title = 'Contextual Analytics'
               </div>
             ))}
           </div>
+
+          {(data.sellPutSweetRange || data.sellCallSweetRange) && (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              {data.sellPutSweetRange && (
+                <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+                  <div className="text-xs font-semibold text-emerald-300 uppercase tracking-wider">PUT Sweet Range</div>
+                  <div className="text-sm font-mono text-white mt-1">
+                    {data.sellPutSweetRange.low.toFixed(2)} - {data.sellPutSweetRange.high.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] text-slate-300 mt-1">
+                    Center: {data.sellPutSweetRange.center.toFixed(2)}
+                    {data.sellPutSweetRange.suggestedStrike != null ? ` · Suggested strike: ${data.sellPutSweetRange.suggestedStrike.toFixed(2)}` : ''}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">{data.sellPutSweetRange.rationale}</div>
+                </div>
+              )}
+              {data.sellCallSweetRange && (
+                <div className="rounded-xl border border-red-500/20 bg-red-500/5 p-3">
+                  <div className="text-xs font-semibold text-red-300 uppercase tracking-wider">CALL Sweet Range</div>
+                  <div className="text-sm font-mono text-white mt-1">
+                    {data.sellCallSweetRange.low.toFixed(2)} - {data.sellCallSweetRange.high.toFixed(2)}
+                  </div>
+                  <div className="text-[11px] text-slate-300 mt-1">
+                    Center: {data.sellCallSweetRange.center.toFixed(2)}
+                    {data.sellCallSweetRange.suggestedStrike != null ? ` · Suggested strike: ${data.sellCallSweetRange.suggestedStrike.toFixed(2)}` : ''}
+                  </div>
+                  <div className="text-[10px] text-slate-500 mt-1">{data.sellCallSweetRange.rationale}</div>
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
             <div className="space-y-2">

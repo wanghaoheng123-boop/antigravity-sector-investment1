@@ -194,6 +194,30 @@ export function normalizeYahooOptionsChain(
   const expirations = rawChain.expirationDates ?? []
   const rawCalls = Array.isArray(rawChain.calls) ? rawChain.calls : []
   const rawPuts = Array.isArray(rawChain.puts) ? rawChain.puts : []
+  const hasExplicitCallExpiry = rawCalls.some((c) => Number(c.expiration ?? 0) > 0)
+  const hasExplicitPutExpiry = rawPuts.some((p) => Number(p.expiration ?? 0) > 0)
+
+  function parseExpiryFromContractSymbol(raw: Record<string, unknown>): number | null {
+    const symbol = String(raw.contractSymbol ?? '')
+    const m = symbol.match(/(\d{6})[CP]\d+$/)
+    if (!m) return null
+    const yy = Number(m[1].slice(0, 2))
+    const mm = Number(m[1].slice(2, 4))
+    const dd = Number(m[1].slice(4, 6))
+    if (!Number.isFinite(yy) || !Number.isFinite(mm) || !Number.isFinite(dd)) return null
+    const fullYear = yy >= 70 ? 1900 + yy : 2000 + yy
+    const tsMs = Date.UTC(fullYear, mm - 1, dd, 0, 0, 0, 0)
+    return Number.isFinite(tsMs) ? Math.floor(tsMs / 1000) : null
+  }
+
+  function matchesExpiry(raw: Record<string, unknown>, expTs: number, hasExplicitExpiry: boolean, singleExpiry: boolean): boolean {
+    const explicit = Number(raw.expiration ?? 0)
+    if (explicit > 0) return explicit === expTs
+    const parsed = parseExpiryFromContractSymbol(raw)
+    if (parsed != null) return parsed === expTs
+    // Yahoo payloads sometimes omit expiry on contracts for single-expiry calls.
+    return !hasExplicitExpiry && singleExpiry
+  }
 
   return expirations.map((expTs: number) => {
     const expiryDate = new Date(expTs * 1000)
@@ -229,11 +253,11 @@ export function normalizeYahooOptionsChain(
     }
 
     const calls = rawCalls
-      .filter((c: Record<string, unknown>) => Number(c.expiration ?? 0) === expTs)
+      .filter((c: Record<string, unknown>) => matchesExpiry(c, expTs, hasExplicitCallExpiry, expirations.length === 1))
       .map((c: Record<string, unknown>) => toContract(c, 'call'))
 
     const puts = rawPuts
-      .filter((p: Record<string, unknown>) => Number(p.expiration ?? 0) === expTs)
+      .filter((p: Record<string, unknown>) => matchesExpiry(p, expTs, hasExplicitPutExpiry, expirations.length === 1))
       .map((p: Record<string, unknown>) => toContract(p, 'put'))
 
     return { date: expiryDate.toISOString(), calls, puts, daysToExpiry }
@@ -423,6 +447,14 @@ export function findCallWall(
   ladder: GammaStrikeLevel[]
 ): { strike: number; strength: number } {
   const totalCallGammaWeight = ladder.reduce((s, l) => s + l.callGamma * l.callOi, 0)
+  if (totalCallGammaWeight <= 0) {
+    const oiLadder = ladder.filter((l) => l.strike >= spotPrice && l.callOi > 0)
+    if (oiLadder.length === 0) return { strike: spotPrice * 1.05, strength: 20 }
+    const best = oiLadder.reduce((a, b) => (b.callOi > a.callOi ? b : a))
+    const totalOi = oiLadder.reduce((s, l) => s + l.callOi, 0)
+    const strength = totalOi > 0 ? Math.min(100, Math.round((best.callOi / totalOi) * 100)) : 20
+    return { strike: best.strike, strength }
+  }
   const threshold = totalCallGammaWeight * 0.25  // 25% of total gamma-weighted call OI
 
   // Find strikes above spot sorted ascending
@@ -453,6 +485,14 @@ export function findPutWall(
   ladder: GammaStrikeLevel[]
 ): { strike: number; strength: number } {
   const totalPutGammaWeight = ladder.reduce((s, l) => s + l.putGamma * l.putOi, 0)
+  if (totalPutGammaWeight <= 0) {
+    const oiLadder = ladder.filter((l) => l.strike <= spotPrice && l.putOi > 0)
+    if (oiLadder.length === 0) return { strike: spotPrice * 0.95, strength: 20 }
+    const best = oiLadder.reduce((a, b) => (b.putOi > a.putOi ? b : a))
+    const totalOi = oiLadder.reduce((s, l) => s + l.putOi, 0)
+    const strength = totalOi > 0 ? Math.min(100, Math.round((best.putOi / totalOi) * 100)) : 20
+    return { strike: best.strike, strength }
+  }
   const threshold = totalPutGammaWeight * 0.25  // 25% of total gamma-weighted put OI
 
   // Find strikes below spot sorted descending

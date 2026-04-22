@@ -2,7 +2,7 @@
 name: QUANTAN Project Status
 description: Canonical project progress snapshot and immediate pending queue for cross-agent continuity
 type: project
-last_updated: 2026-04-23
+last_updated: 2026-04-24
 ---
 
 # Status Snapshot
@@ -64,6 +64,12 @@ When user says "continue", open **`docs/NEXT_SESSION_PLAN_2026-04.md`**, then th
 - Added options intelligence API and computation layer:
   - `/api/options/intelligence/[ticker]`
   - `lib/options/intelligence.ts`
+- Hardened options wall reliability and sweet-range outputs:
+  - Improved contract-to-expiry normalization fallback in `lib/quant/optionsGamma.ts` (handles sparse Yahoo expiry metadata via contract symbol parsing).
+  - Added OI fallback logic for put/call wall computation when gamma-weight ladders are sparse or near-zero.
+  - Added explicit `sellPutSweetRange` and `sellCallSweetRange` fields in `lib/options/intelligence.ts`.
+  - Enhanced contextual analytics UI to show numeric sweet ranges and suggested strikes for selling puts/calls.
+  - Hardened options API routes to merge near-term expiry slices when initial Yahoo chain payload is sparse.
 - Added institutional automation artifacts:
   - `scripts/backtest-matrix.ts`
   - `scripts/scorecard-evaluate.ts`

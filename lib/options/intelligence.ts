@@ -30,6 +30,20 @@ export interface OptionsIntelligenceResult {
     high: number
     note: string
   }>
+  sellPutSweetRange: {
+    low: number
+    high: number
+    center: number
+    suggestedStrike: number | null
+    rationale: string
+  }
+  sellCallSweetRange: {
+    low: number
+    high: number
+    center: number
+    suggestedStrike: number | null
+    rationale: string
+  }
   sellPutCandidates: SafetyTierCandidate[]
   sellCallCandidates: SafetyTierCandidate[]
   confidence: 'high' | 'medium' | 'low'
@@ -142,6 +156,9 @@ export function buildOptionsIntelligence(spotPrice: number, expiries: OptionExpi
     cAggressive ? buildCallCandidate(spotPrice, focusExpiry!, cAggressive, 'aggressive') : null,
   ].filter((v): v is SafetyTierCandidate => v != null)
 
+  const suggestedPut = sellPutCandidates.find((c) => c.tier === 'balanced') ?? sellPutCandidates[0] ?? null
+  const suggestedCall = sellCallCandidates.find((c) => c.tier === 'balanced') ?? sellCallCandidates[0] ?? null
+
   const conservativeLow = Math.min(putWall.strike, maxPainStrike) * 0.985
   const conservativeHigh = Math.max(putWall.strike, maxPainStrike) * 1.005
   const balancedLow = Math.min(maxPainStrike, spotPrice) * 0.99
@@ -153,6 +170,13 @@ export function buildOptionsIntelligence(spotPrice: number, expiries: OptionExpi
   const liquidityScoreAvg = [...sellPutCandidates, ...sellCallCandidates].reduce((s, c) => s + c.liquidityScore, 0) / Math.max(1, sellPutCandidates.length + sellCallCandidates.length)
   const confidenceRaw = coverageScore * 0.55 + liquidityScoreAvg * 0.45
   const confidence = confidenceRaw > 0.75 ? 'high' : confidenceRaw > 0.5 ? 'medium' : 'low'
+
+  const putRangeLow = Math.min(putWall.strike, maxPainStrike) * 0.985
+  const putRangeHigh = Math.min(spotPrice * 0.995, Math.max(putWall.strike, maxPainStrike) * 1.005)
+  const callRangeLow = Math.max(spotPrice * 1.005, Math.min(callWall.strike, maxPainStrike) * 0.995)
+  const callRangeHigh = Math.max(callWall.strike, maxPainStrike) * 1.015
+  const putCenter = (putRangeLow + putRangeHigh) / 2
+  const callCenter = (callRangeLow + callRangeHigh) / 2
 
   return {
     spotPrice,
@@ -167,6 +191,20 @@ export function buildOptionsIntelligence(spotPrice: number, expiries: OptionExpi
       { tier: 'balanced', low: balancedLow, high: balancedHigh, note: 'Blend of max pain gravity and current spot context.' },
       { tier: 'aggressive', low: aggressiveLow, high: aggressiveHigh, note: 'Near spot/call wall transition with tighter buffer.' },
     ],
+    sellPutSweetRange: {
+      low: putRangeLow,
+      high: putRangeHigh,
+      center: putCenter,
+      suggestedStrike: suggestedPut?.strike ?? null,
+      rationale: 'Derived from put wall + max pain support zone with a conservative downside buffer.',
+    },
+    sellCallSweetRange: {
+      low: callRangeLow,
+      high: callRangeHigh,
+      center: callCenter,
+      suggestedStrike: suggestedCall?.strike ?? null,
+      rationale: 'Derived from call wall + max pain resistance zone with an upside buffer to reduce early assignment risk.',
+    },
     sellPutCandidates,
     sellCallCandidates,
     confidence,
