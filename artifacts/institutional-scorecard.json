@@ -1,0 +1,150 @@
+{
+  "generatedAt": "2026-04-21T15:47:34.325Z",
+  "checks": [
+    {
+      "metricId": "A1_10y_ann_return",
+      "pass": false,
+      "measured": -0.0010019417730272595,
+      "threshold": 0.06
+    },
+    {
+      "metricId": "A2_10y_win_rate",
+      "pass": true,
+      "measured": 0.5151515151515151,
+      "threshold": 0.5
+    },
+    {
+      "metricId": "B1_10y_max_dd",
+      "pass": true,
+      "measured": 0.05417291426625839,
+      "threshold": 0.35
+    },
+    {
+      "metricId": "B3_10y_sharpe",
+      "pass": false,
+      "measured": -15.743450764712788,
+      "threshold": 0.4
+    },
+    {
+      "metricId": "B3_10y_sortino",
+      "pass": false,
+      "measured": -12.63944135466111,
+      "threshold": 0.6
+    },
+    {
+      "metricId": "D3_10y_coverage",
+      "pass": true,
+      "measured": 13,
+      "threshold": 8
+    },
+    {
+      "metricId": "A1_15y_ann_return",
+      "pass": false,
+      "measured": -0.0010019417730272595,
+      "threshold": 0.06
+    },
+    {
+      "metricId": "A2_15y_win_rate",
+      "pass": true,
+      "measured": 0.5151515151515151,
+      "threshold": 0.5
+    },
+    {
+      "metricId": "B1_15y_max_dd",
+      "pass": true,
+      "measured": 0.05417291426625839,
+      "threshold": 0.35
+    },
+    {
+      "metricId": "B3_15y_sharpe",
+      "pass": false,
+      "measured": -15.743450764712788,
+      "threshold": 0.4
+    },
+    {
+      "metricId": "B3_15y_sortino",
+      "pass": false,
+      "measured": -12.63944135466111,
+      "threshold": 0.6
+    },
+    {
+      "metricId": "D3_15y_coverage",
+      "pass": true,
+      "measured": 13,
+      "threshold": 8
+    },
+    {
+      "metricId": "A1_20y_ann_return",
+      "pass": false,
+      "measured": -0.0010019417730272595,
+      "threshold": 0.06
+    },
+    {
+      "metricId": "A2_20y_win_rate",
+      "pass": true,
+      "measured": 0.5151515151515151,
+      "threshold": 0.5
+    },
+    {
+      "metricId": "B1_20y_max_dd",
+      "pass": true,
+      "measured": 0.05417291426625839,
+      "threshold": 0.35
+    },
+    {
+      "metricId": "B3_20y_sharpe",
+      "pass": false,
+      "measured": -15.743450764712788,
+      "threshold": 0.4
+    },
+    {
+      "metricId": "B3_20y_sortino",
+      "pass": false,
+      "measured": -12.63944135466111,
+      "threshold": 0.6
+    },
+    {
+      "metricId": "D3_20y_coverage",
+      "pass": true,
+      "measured": 13,
+      "threshold": 8
+    },
+    {
+      "metricId": "A1_30y_ann_return",
+      "pass": false,
+      "measured": -0.0010019417730272595,
+      "threshold": 0.06
+    },
+    {
+      "metricId": "A2_30y_win_rate",
+      "pass": true,
+      "measured": 0.5151515151515151,
+      "threshold": 0.5
+    },
+    {
+      "metricId": "B1_30y_max_dd",
+      "pass": true,
+      "measured": 0.05417291426625839,
+      "threshold": 0.35
+    },
+    {
+      "metricId": "B3_30y_sharpe",
+      "pass": false,
+      "measured": -15.743450764712788,
+      "threshold": 0.4
+    },
+    {
+      "metricId": "B3_30y_sortino",
+      "pass": false,
+      "measured": -12.63944135466111,
+      "threshold": 0.6
+    },
+    {
+      "metricId": "D3_30y_coverage",
+      "pass": true,
+      "measured": 13,
+      "threshold": 8
+    }
+  ],
+  "overallPass": false
+}

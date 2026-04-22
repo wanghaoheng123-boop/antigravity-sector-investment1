@@ -1,0 +1,63 @@
+{
+  "generatedAt": "2026-04-21T15:47:30.044Z",
+  "universe": [
+    "NVDA",
+    "MSFT",
+    "XOM",
+    "CVX",
+    "BRK.B",
+    "JPM",
+    "LLY",
+    "UNH",
+    "AMZN",
+    "TSLA",
+    "GE",
+    "RTX",
+    "SPY",
+    "QQQ",
+    "GLD",
+    "BTC"
+  ],
+  "windows": [
+    {
+      "years": 10,
+      "instruments": 13,
+      "totalReturn": -0.006439372806047053,
+      "annualizedReturn": -0.0010019417730272595,
+      "winRate": 0.5151515151515151,
+      "maxDrawdown": 0.05417291426625839,
+      "sharpeRatio": -15.743450764712788,
+      "sortinoRatio": -12.63944135466111
+    },
+    {
+      "years": 15,
+      "instruments": 13,
+      "totalReturn": -0.006439372806047053,
+      "annualizedReturn": -0.0010019417730272595,
+      "winRate": 0.5151515151515151,
+      "maxDrawdown": 0.05417291426625839,
+      "sharpeRatio": -15.743450764712788,
+      "sortinoRatio": -12.63944135466111
+    },
+    {
+      "years": 20,
+      "instruments": 13,
+      "totalReturn": -0.006439372806047053,
+      "annualizedReturn": -0.0010019417730272595,
+      "winRate": 0.5151515151515151,
+      "maxDrawdown": 0.05417291426625839,
+      "sharpeRatio": -15.743450764712788,
+      "sortinoRatio": -12.63944135466111
+    },
+    {
+      "years": 30,
+      "instruments": 13,
+      "totalReturn": -0.006439372806047053,
+      "annualizedReturn": -0.0010019417730272595,
+      "winRate": 0.5151515151515151,
+      "maxDrawdown": 0.05417291426625839,
+      "sharpeRatio": -15.743450764712788,
+      "sortinoRatio": -12.63944135466111
+    }
+  ]
+}

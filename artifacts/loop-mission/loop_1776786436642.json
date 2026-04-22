@@ -1,0 +1,32 @@
+{
+  "runId": "loop_1776786436642",
+  "generatedAt": "2026-04-21T15:47:34.422Z",
+  "steps": [
+    {
+      "name": "typecheck",
+      "command": "npm run typecheck",
+      "pass": false,
+      "output": "\n> quantan@0.1.0 typecheck\n> tsc --noEmit\n\n'tsc' is not recognized as an internal or external command,\r\noperable program or batch file.\r\n"
+    },
+    {
+      "name": "long_data_verify",
+      "command": "npm run verify:data:long",
+      "pass": false,
+      "output": "\n> quantan@0.1.0 verify:data:long\n> tsx scripts/verify-long-data.ts\n\nG:\\我的云端硬盘\\QUANTAN-sector-investment\\lib\\data\\warehouse.ts:91\r\n  const rows = db.prepare(`SELECT DISTINCT ticker FROM candles ORDER BY ticker`).all() as { ticker: string }[]\r\n                  ^\r\n\r\nError: no such table: candles\r\n    at listWarehouseTickers (G:\\我的云端硬盘\\QUANTAN-sector-investment\\lib\\data\\warehouse.ts:91:19)\r\n    at main (G:\\我的云端硬盘\\QUANTAN-sector-investment\\scripts\\verify-long-data.ts:24:19)\r\n    at <anonymous> (G:\\我的云端硬盘\\QUANTAN-sector-investment\\scripts\\verify-long-data.ts:56:1)\r\n    at Object.<anonymous> (G:\\我的云端硬盘\\QUANTAN-sector-investment\\scripts\\verify-long-data.ts:56:6)\r\n    at Module._compile (node:internal/modules/cjs/loader:1706:14)\r\n    at Object.transformer (C:\\Users\\wang haoheng\\AppData\\Local\\npm-cache\\_npx\\fd45a72a545557e9\\node_modules\\tsx\\dist\\register-D46fvsV_.cjs:3:1104)\r\n    at Module.load (node:internal/modules/cjs/loader:1441:32)\r\n    at Function._load (node:internal/modules/cjs/loader:1263:12)\r\n    at TracingChannel.traceSync (node:diagnostics_channel:328:14)\r\n    at wrapModuleLoad (node:internal/modules/cjs/loader:237:24) {\r\n  code: 'ERR_SQLITE_ERROR',\r\n  errcode: 1,\r\n  errstr: 'SQL logic error'\r\n}\r\n\r\nNode.js v22.22.0\r\n"
+    },
+    {
+      "name": "backtest_matrix",
+      "command": "npx tsx scripts/backtest-matrix.ts",
+      "pass": true,
+      "output": "[backtest:matrix] wrote G:\\我的云端硬盘\\QUANTAN-sector-investment\\artifacts\\backtest-matrix.json\n"
+    },
+    {
+      "name": "scorecard_evaluate",
+      "command": "npx tsx scripts/scorecard-evaluate.ts",
+      "pass": false,
+      "output": "[scorecard] wrote G:\\我的云端硬盘\\QUANTAN-sector-investment\\artifacts\\institutional-scorecard.json overallPass=false\n"
+    }
+  ],
+  "overallPass": false,
+  "nextActionForContinue": "Fix failed checks and rerun loop mission."
+}
