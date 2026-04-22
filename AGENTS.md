@@ -41,8 +41,8 @@ Goal: >80% selective signal accuracy across all market conditions. Bloomberg-lik
 | 5 | Data Infrastructure | ✅ COMPLETE | main / workspace |
 | 6 | Portfolio & Risk Management | ✅ IN PROGRESS (MVP shipped) | `lib/portfolio/*`, `/portfolio` |
 | 7 | Continuous Optimization | ✅ IN PROGRESS (MVP shipped) | `scripts/nightly-backtest.ts`, workflow, `/monitor`, `lib/optimize/gridSearch.ts`, `POST /api/optimize` |
-| 8 | Data Infrastructure 2.0 (30Y history) | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
-| 9 | Business Cycle Intelligence Engine | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 8 | Data Infrastructure 2.0 (30Y history) | 🔄 IN PROGRESS | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 9 | Business Cycle Intelligence Engine | 🔄 IN PROGRESS | see `docs/MASTER_PLAN_PHASES_8_16.md` |
 | 10 | Advanced Valuation Suite (CAPE, reverseDCF, DDM, EPV, EVA) | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
 | 11 | Options Microstructure 2.0 + Strike Recommendation | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
 | 12 | Institutional Accumulation Detection (13F, COT, whales) | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
@@ -256,4 +256,4 @@ When you complete a phase or significant milestone:
 ---
 
 ## File Last Updated
-2026-04-21 · Phases 8–16 plan committed: institutional-grade upgrade roadmap (30Y data, business cycle engine, advanced valuation, options 2.0, institutional accumulation, OPUS feedback loop, Buffet-style output). See `docs/MASTER_PLAN_PHASES_8_16.md` + `memory/` for canonical plan.
+2026-04-23 · Continuation cycle: Phase A matrix diagnostics, profiled institutional gates, ranking rolling-stability gate, and ranking factor expansion (regime/persistence/accumulation).

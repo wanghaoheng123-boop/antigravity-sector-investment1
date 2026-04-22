@@ -21,6 +21,7 @@ interface WindowResult {
   years: WindowYears
   instruments: number
   alignedTradingDays: number
+  coverageRatio: number
   totalReturn: number
   annualizedReturn: number
   winRate: number
@@ -31,6 +32,12 @@ interface WindowResult {
   medianAnnualizedReturn: number
   medianSharpeRatio: number | null
   medianSortinoRatio: number | null
+  historyDiagnostics: Array<{
+    ticker: string
+    requestedYears: number
+    loadedRows: number
+    alignedRows: number
+  }>
 }
 
 function medianSorted(xs: number[]): number {
@@ -61,6 +68,7 @@ function failedWindow(years: WindowYears, reason: string): WindowResult {
     years,
     instruments: 0,
     alignedTradingDays: 0,
+    coverageRatio: 0,
     totalReturn: 0,
     annualizedReturn: -1,
     winRate: 0,
@@ -70,6 +78,7 @@ function failedWindow(years: WindowYears, reason: string): WindowResult {
     medianAnnualizedReturn: -1,
     medianSharpeRatio: null,
     medianSortinoRatio: null,
+    historyDiagnostics: [],
   }
 }
 
@@ -91,10 +100,18 @@ function runWindow(years: WindowYears): WindowResult {
   const portfolio = aggregatePortfolio(results, DEFAULT_CONFIG.initialCapital)
   const med = medianRisk(results)
   const alignedTradingDays = results[0]?.equityCurve.length ?? 0
+  const historyDiagnostics = Object.entries(loaded).map(([ticker, rows]) => ({
+    ticker,
+    requestedYears: years,
+    loadedRows: rows.length,
+    alignedRows: aligned[ticker]?.length ?? 0,
+  }))
+  const coverageRatio = CORE_UNIVERSE.length > 0 ? results.length / CORE_UNIVERSE.length : 0
   return {
     years,
     instruments: results.length,
     alignedTradingDays,
+    coverageRatio,
     totalReturn: portfolio.totalReturn,
     annualizedReturn: portfolio.annualizedReturn,
     winRate: portfolio.winRate,
@@ -104,6 +121,7 @@ function runWindow(years: WindowYears): WindowResult {
     medianAnnualizedReturn: med.medianAnnualizedReturn,
     medianSharpeRatio: med.medianSharpeRatio,
     medianSortinoRatio: med.medianSortinoRatio,
+    historyDiagnostics,
   }
 }
 

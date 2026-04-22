@@ -19,7 +19,7 @@ export default function InstitutionalRankingBoard({ rows }: Props) {
         <h3 className="text-sm font-bold text-white uppercase tracking-wider text-slate-400">
           Institutional Early-Entry Ranking
         </h3>
-        <span className="text-[10px] text-slate-500">Profit-first with risk/OOS gates</span>
+        <span className="text-[10px] text-slate-500">Score: Return34 Risk18 OOS20 Timing10 Regime8 Persist5 Accum5</span>
       </div>
       <div className="space-y-2">
         {top.map((r, idx) => (
@@ -31,6 +31,7 @@ export default function InstitutionalRankingBoard({ rows }: Props) {
                 </span>
                 <span className="text-sm font-bold text-white">{r.ticker}</span>
                 <span className="text-[10px] text-slate-500">{r.sector}</span>
+                <span className="text-[10px] px-1 py-0.5 rounded border border-slate-700 text-slate-400">{r.conviction}</span>
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-[10px] px-1.5 py-0.5 rounded border ${
@@ -51,6 +52,12 @@ export default function InstitutionalRankingBoard({ rows }: Props) {
               <div className="text-slate-500">OOS <span className="text-slate-300">{pct(r.robustnessScore)}</span></div>
               <div className="text-slate-500">Timing <span className="text-slate-300">{pct(r.timingScore)}</span></div>
             </div>
+            <div className="grid grid-cols-3 gap-1 mt-1 text-[10px]">
+              <div className="text-slate-500">Regime <span className="text-slate-300">{pct(r.regimeScore)}</span></div>
+              <div className="text-slate-500">Persist <span className="text-slate-300">{pct(r.persistenceScore)}</span></div>
+              <div className="text-slate-500">Accum <span className="text-slate-300">{pct(r.accumulationScore)}</span></div>
+            </div>
+            <div className="mt-1 text-[10px] text-slate-500">{r.thesis}</div>
           </div>
         ))}
       </div>

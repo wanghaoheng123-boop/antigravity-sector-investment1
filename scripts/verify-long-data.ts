@@ -5,6 +5,7 @@
 
 import { DatabaseSync } from 'node:sqlite'
 import { isAbsolute, join } from 'node:path'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { listWarehouseTickers, readCandles } from '../lib/data/warehouse'
 
 function resolveDbPath(): string {
@@ -48,8 +49,10 @@ function main(): void {
     return
   }
   let failed = 0
+  const tickerDiagnostics: Array<{ ticker: string; rows: number; firstDate: string; lastDate: string; maxGapDays: number }> = []
   for (const ticker of tickers) {
     const rows = readCandles(db, ticker)
+    let maxGapDays = 0
     for (let i = 0; i < rows.length; i += 1) {
       const r = rows[i]
       const ohlcOk =
@@ -65,14 +68,38 @@ function main(): void {
       }
       if (i > 0) {
         const gap = daysBetween(rows[i - 1].date, r.date)
+        if (gap > maxGapDays) maxGapDays = gap
         if (gap > 8) {
           failed += 1
           console.error(`[verify:data:long] ${ticker} large gap ${rows[i - 1].date} -> ${r.date} (${gap}d)`)
         }
       }
     }
+    tickerDiagnostics.push({
+      ticker,
+      rows: rows.length,
+      firstDate: rows[0]?.date ?? '',
+      lastDate: rows[rows.length - 1]?.date ?? '',
+      maxGapDays,
+    })
   }
   db.close()
+  const outDir = join(process.cwd(), 'artifacts')
+  mkdirSync(outDir, { recursive: true })
+  writeFileSync(
+    join(outDir, 'long-data-diagnostics.json'),
+    JSON.stringify(
+      {
+        generatedAt: new Date().toISOString(),
+        tickers: tickerDiagnostics.length,
+        failedChecks: failed,
+        diagnostics: tickerDiagnostics,
+      },
+      null,
+      2,
+    ),
+    'utf-8',
+  )
   if (failed > 0) process.exit(1)
   console.log(`[verify:data:long] ok tickers=${tickers.length}`)
 }

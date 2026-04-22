@@ -1,4 +1,6 @@
 import type { BacktestResult, WalkForwardSummary } from '@/lib/backtest/engine'
+import { accumulationScore } from '@/lib/alpha/accumulationProxies'
+import { regimeScore, sectorPersistenceScore } from '@/lib/alpha/rankingRegimeFeatures'
 
 export interface LiveMicrostructureSnapshot {
   rsi14?: number | null
@@ -22,6 +24,9 @@ export interface InstitutionalRankingRow {
   riskControlScore: number
   robustnessScore: number
   timingScore: number
+  regimeScore: number
+  persistenceScore: number
+  accumulationScore: number
   conviction: 'A' | 'B' | 'C'
   thesis: string
   actionBias: 'accumulate' | 'watch' | 'avoid'
@@ -68,6 +73,13 @@ function actionFromScore(score: number): 'accumulate' | 'watch' | 'avoid' {
 }
 
 export function buildInstitutionalRanking(inputs: InstitutionalRankingInput[]): InstitutionalRankingRow[] {
+  const sectorToReturns = new Map<string, number[]>()
+  for (const { result } of inputs) {
+    const arr = sectorToReturns.get(result.sector) ?? []
+    arr.push(result.annualizedReturn)
+    sectorToReturns.set(result.sector, arr)
+  }
+
   const rows = inputs.map(({ result, walkForward, live }) => {
     const expectedReturnScore = clamp01(
       0.65 * scaleRange(result.annualizedReturn, -0.03, 0.25) +
@@ -90,13 +102,31 @@ export function buildInstitutionalRanking(inputs: InstitutionalRankingInput[]): 
     )
 
     const timingScore = deriveTimingScore(live)
+    const regime = regimeScore({
+      annualizedReturn: result.annualizedReturn,
+      maxDrawdown: result.maxDrawdown,
+      sharpeRatio: result.sharpeRatio,
+      sortinoRatio: result.sortinoRatio,
+      winRate: result.winRate,
+    })
+    const sectorSeries = (sectorToReturns.get(result.sector) ?? []).slice(0, 8)
+    const persistence = sectorPersistenceScore(sectorSeries)
+    const accumulation = accumulationScore({
+      atrPct: live?.atrPct,
+      macdHist: live?.macdHist,
+      rsi14: live?.rsi14,
+      changePct: live?.changePct,
+    })
 
     // Profit-first weights with institutional guardrails against fragile alpha.
     const rankScore = clamp01(
-      0.42 * expectedReturnScore +
-      0.22 * riskControlScore +
-      0.24 * robustnessScore +
-      0.12 * timingScore,
+      0.34 * expectedReturnScore +
+      0.18 * riskControlScore +
+      0.2 * robustnessScore +
+      0.1 * timingScore +
+      0.08 * regime +
+      0.05 * persistence +
+      0.05 * accumulation,
     )
 
     const conviction = convictionFromScore(rankScore)
@@ -116,6 +146,9 @@ export function buildInstitutionalRanking(inputs: InstitutionalRankingInput[]): 
       riskControlScore,
       robustnessScore,
       timingScore,
+      regimeScore: regime,
+      persistenceScore: persistence,
+      accumulationScore: accumulation,
       conviction,
       thesis,
       actionBias,

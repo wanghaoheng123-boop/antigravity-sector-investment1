@@ -32,6 +32,7 @@
     "verify:data:long": "tsx scripts/verify-long-data.ts",
     "backtest:matrix": "tsx scripts/backtest-matrix.ts",
     "backtest:ranking:strict": "tsx scripts/ranking-strict-backtest.ts",
+    "ranking:rolling:stability": "tsx scripts/ranking-rolling-stability.ts",
     "scorecard:evaluate": "tsx scripts/scorecard-evaluate.ts",
     "loop:mission": "tsx scripts/loop-mission.ts"
   },

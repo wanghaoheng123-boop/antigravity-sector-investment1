@@ -40,12 +40,12 @@ This plan supersedes ad-hoc todos for the next work block. Goal: close **failed 
 - [ ] **A1** Confirm warehouse/JSON **effective history length** per ticker; document min bars per asset class in `memory/` or scorecard metadata (no code churn in unrelated files).
 - [ ] **A2** Extend SQLite warehouse coverage **or** document that matrix windows are capped at available depth (already partially in matrix JSON).
 - [ ] **A3** Re-run after data work:  
-  `npm run backtest:matrix` → `npm run scorecard:evaluate` → `npm run loop:mission`  
+  `npm run backtest:matrix` → `npm run backtest:ranking:strict` → `npm run ranking:rolling:stability` → `npm run scorecard:evaluate` → `npm run loop:mission`  
   Record `artifacts/institutional-scorecard.json` each run.
 
 ### Phase B — Scorecard policy (decision, not cheating)
 
-- [ ] **B1** If gates stay red with honest economics: add **`config/institutional-gates-profiles.json`** (or `profiles` inside existing gates) with **`strict`** (current) vs **`staging`** thresholds, **documented** in one place (why staging exists: CI smoke vs release).
+- [x] **B1** Profile-based thresholds are now in `config/institutional-gates.json` (`strict` + `staging`). Continue calibrating with explicit policy selection.
 - [ ] **B2** Optional: scorecard checks **median instrument** metrics **in addition to** portfolio row (already in matrix JSON) — only if product agrees dual view is acceptable.
 
 ### Phase C — Ranking & alpha pipeline (your institutional timing goal)
@@ -66,6 +66,7 @@ This plan supersedes ad-hoc todos for the next work block. Goal: close **failed 
 | Matrix | `npm run backtest:matrix` | after engine/signals/data loader changes |
 | Scorecard | `npm run scorecard:evaluate` | after matrix |
 | Ranking strict | `npm run backtest:ranking:strict` | after ranking weights change |
+| Ranking stability | `npm run ranking:rolling:stability` | after ranking feature changes |
 | Full loop | `npm run loop:mission` | before “release candidate” |
 | Warehouse strict | `QUANTAN_REQUIRE_WAREHOUSE=1 npm run verify:data:long` | CI only when DB provisioned |
 
@@ -94,6 +95,7 @@ npm run benchmark
 npm run backtest:matrix
 npm run scorecard:evaluate
 npm run backtest:ranking:strict
+npm run ranking:rolling:stability
 npm run loop:mission
 ```
 

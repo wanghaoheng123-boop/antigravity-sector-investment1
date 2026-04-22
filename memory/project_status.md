@@ -2,7 +2,7 @@
 name: QUANTAN Project Status
 description: Canonical project progress snapshot and immediate pending queue for cross-agent continuity
 type: project
-last_updated: 2026-04-22
+last_updated: 2026-04-23
 ---
 
 # Status Snapshot
@@ -53,6 +53,11 @@ When user says "continue", open **`docs/NEXT_SESSION_PLAN_2026-04.md`**, then th
 
 ## Latest implementation checkpoint
 
+- Added Phase A matrix coverage diagnostics (`alignedTradingDays`, `coverageRatio`, per-ticker history diagnostics).
+- Added profile-based institutional gates (`strict` / `staging`) and ranking gate support in scorecard evaluation.
+- Added rolling ranking stability script/artifact path: `scripts/ranking-rolling-stability.ts` -> `artifacts/ranking-rolling-stability.json`.
+- Extended institutional ranking factors with regime/persistence/accumulation sub-scores.
+- Added architecture review tracking doc: `docs/ARCH_REVIEW_LOG.md`.
 - Added contextual analytics zone component and integrated it into:
   - `/simulator`
   - `/stock/[ticker]`

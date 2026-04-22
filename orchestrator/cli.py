@@ -7,8 +7,8 @@ from orchestrator.backtest.stress import run_stress_suite
 from orchestrator.brain.planner import draft_task
 from orchestrator.brain.reviewer import review_executor_output
 from orchestrator.data.ingestion.fetch_fundamentals import fetch_fundamentals_stub
-from orchestrator.data.ingestion.fetch_options import fetch_options_stub
-from orchestrator.data.ingestion.fetch_prices import fetch_prices_stub
+from orchestrator.data.ingestion.fetch_options import fetch_options
+from orchestrator.data.ingestion.fetch_prices import fetch_prices
 from orchestrator.data.ingestion.fetch_sentiment import fetch_sentiment_stub
 from orchestrator.data.quality.denoise import kalman_1d, noise_score, robust_zscore_filter
 from orchestrator.data.quality.feature_matrix import build_feature_matrix
@@ -28,8 +28,8 @@ DEFAULT_EXPORT_DIR = "memory/ledger_exports"
 DEFAULT_SNAPSHOT_DIR = "memory/snapshots"
 
 
-def _load_prices(symbol: str) -> list[dict]:
-    rows = fetch_prices_stub(symbol)
+def _load_prices(symbol: str) -> tuple[list[dict], str]:
+    rows, source = fetch_prices(symbol)
     validation = validate_ohlcv(rows)
     closes = [float(x["close"]) for x in rows]
     raw_noise = noise_score(closes)
@@ -43,18 +43,18 @@ def _load_prices(symbol: str) -> list[dict]:
         "noise_score_pre": raw_noise,
         "noise_score_post": smooth_noise,
     }
-    return rows
+    return rows, source
 
 
 def run_loop(symbol: str, mode: str, backend: str, risk_budget: float) -> dict:
     ledger = Ledger(DEFAULT_DB, DEFAULT_EXPORT_DIR)
     run_id = ledger.start_run(mode=mode, objective={"primary": "sharpe_sortino_robustness"}, notes=f"symbol={symbol}")
-    rows = _load_prices(symbol)
+    rows, price_source = _load_prices(symbol)
     validation = rows[0]["_validation"]
-    ledger.append_data_quality_audit("stub_prices", symbol, validation)
+    ledger.append_data_quality_audit(f"prices_{price_source}", symbol, validation)
 
     spot = float(rows[-1]["close"])
-    chain = fetch_options_stub(symbol, spot=spot)
+    chain, options_source = fetch_options(symbol, spot=spot)
     max_pain = compute_max_pain(chain)
     gex = compute_gex_profile(chain, spot=spot)
     options_features = build_pressure_features(spot, max_pain, gex)
@@ -84,21 +84,34 @@ def run_loop(symbol: str, mode: str, backend: str, risk_budget: float) -> dict:
             run_id=run_id,
             pillar="fusion",
             strategy_name="three_pillar_fusion",
-            dataset_id=f"{symbol}_stub_120d",
+            dataset_id=f"{symbol}_{price_source}_120d",
             params=params,
             executor_backend=backend,
         )
         metrics = run_backtest(feature_rows, regime="mixed")
         metrics["turnover"] = metrics["turnover"] * (1 + params["options_weight"])
+        metrics["market_regime"] = "mixed"
+        metrics["period_start"] = rows[0]["timestamp"]
+        metrics["period_end"] = rows[-1]["timestamp"]
+        metrics["cost_bps"] = 22.0
+        stress = run_stress_suite(metrics)
         ledger.append_backtest_result(exp_id, metrics)
-        results.append({"params": params, "metrics": metrics, "ok": ok})
+        results.append({"params": params, "metrics": metrics, "ok": ok, "stress": stress})
 
     best = pick_best_result(results)
-    stress = run_stress_suite(best["metrics"] if best else {})
+    stress = best["stress"] if best else {}
     export_path = ledger.export_run(run_id)
     snapshot_path = write_latest_snapshot(
         DEFAULT_SNAPSHOT_DIR,
-        {"run_id": run_id, "symbol": symbol, "mode": mode, "best": best, "stress": stress, "next_action_for_continue": "Review best params and run next symbol"},
+        {
+            "run_id": run_id,
+            "symbol": symbol,
+            "mode": mode,
+            "sources": {"prices": price_source, "options": options_source},
+            "best": best,
+            "stress": stress,
+            "next_action_for_continue": "Review best params and run next symbol",
+        },
     )
     ledger.append_artifact(run_id, "ledger_export", str(export_path))
     ledger.append_artifact(run_id, "snapshot", str(snapshot_path))

@@ -507,7 +507,6 @@ export default function SimulatorResults({
                             </td>
                             <td className="px-4 py-2.5 text-slate-600 text-[10px]">—</td>
                             <td className="px-4 py-2.5 text-slate-600 text-[10px]">—</td>
-                            <td className="px-4 py-2.5 text-slate-600 text-[10px]">—</td>
                           </tr>
                         )
                       })

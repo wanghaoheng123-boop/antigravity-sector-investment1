@@ -87,6 +87,9 @@ interface SimulatorApiResponse {
     riskControlScore: number
     robustnessScore: number
     timingScore: number
+    regimeScore: number
+    persistenceScore: number
+    accumulationScore: number
     conviction: 'A' | 'B' | 'C'
     thesis: string
     actionBias: 'accumulate' | 'watch' | 'avoid'

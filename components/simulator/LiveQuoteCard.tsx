@@ -66,6 +66,13 @@ export default function LiveQuoteCard({ ticker, price, changePct, rsi14, atrPct,
   const regimeLabel = regime?.replace(/_/g, ' ')
 
   const actionClass = action ? ACTION_COLORS[action] ?? ACTION_COLORS.HOLD : undefined
+  const indicators = [
+    { label: 'RSI', value: rsi14 != null ? rsi14.toFixed(1) : undefined, color: rsiColor },
+    { label: 'ATR%', value: atrPct != null ? `${atrPct.toFixed(1)}%` : undefined },
+    { label: '200EMA', value: deviationPct != null ? `${deviationPct >= 0 ? '+' : ''}${deviationPct.toFixed(1)}%` : undefined },
+    { label: 'MACD', value: macdHist != null ? `${macdHist >= 0 ? '+' : ''}${macdHist.toFixed(3)}` : undefined },
+    { label: 'BB%', value: bbPctB != null ? bbPctB.toFixed(2) : undefined },
+  ].filter((x) => x.value != null)
 
   return (
     <div
@@ -110,13 +117,17 @@ export default function LiveQuoteCard({ ticker, price, changePct, rsi14, atrPct,
       </div>
 
       {/* Indicator grid */}
-      <div className="grid grid-cols-5 gap-1 mb-3 py-2 border-y border-slate-800/60">
-        <IndicatorPill label="RSI" value={rsi14 != null ? rsi14.toFixed(1) : undefined} color={rsiColor} />
-        <IndicatorPill label="ATR%" value={atrPct != null ? `${atrPct.toFixed(1)}%` : undefined} />
-        <IndicatorPill label="200EMA" value={deviationPct != null ? `${deviationPct >= 0 ? '+' : ''}${deviationPct.toFixed(1)}%` : undefined} />
-        <IndicatorPill label="MACD" value={macdHist != null ? `${macdHist >= 0 ? '+' : ''}${macdHist.toFixed(3)}` : undefined} />
-        <IndicatorPill label="BB%" value={bbPctB != null ? bbPctB.toFixed(2) : undefined} />
-      </div>
+      {indicators.length > 0 ? (
+        <div className="grid grid-cols-5 gap-1 mb-3 py-2 border-y border-slate-800/60">
+          {indicators.map((item) => (
+            <IndicatorPill key={item.label} label={item.label} value={item.value} color={item.color} />
+          ))}
+        </div>
+      ) : (
+        <div className="mb-3 py-2 border-y border-slate-800/60 text-[10px] text-slate-500">
+          Indicators unavailable in quote mode.
+        </div>
+      )}
 
       {/* Action + Confidence row */}
       <div className="flex items-center justify-between gap-2">
