@@ -33,6 +33,7 @@ import { paperShortPremiumMark } from '@/lib/options/income/paperIncome'
 import type { OptionsIncomeLeg } from '@/lib/options/income/types'
 import { buildRunAudit, newTraceId, configHashFromObject, logRunEvent } from '@/lib/infra/runAudit'
 import { clientKeyFromRequest, rateLimitHit } from '@/lib/infra/rateLimit'
+import { buildInstitutionalRanking } from '@/lib/alpha/institutionalRanking'
 
 // ─── Request / Response types ──────────────────────────────────────────────────
 
@@ -1340,6 +1341,21 @@ export async function POST(request: Request) {
   for (const { ticker, result: quote } of quoteResults) {
     if (quote) liveQuotes[ticker] = quote
   }
+  const rankingBoard = buildInstitutionalRanking(
+    results.map((result) => ({
+      result,
+      walkForward: walkForwardByTicker[result.ticker] ?? null,
+      live: liveQuotes[result.ticker]
+        ? {
+            rsi14: liveQuotes[result.ticker]?.rsi14 ?? null,
+            macdHist: liveQuotes[result.ticker]?.macdHist ?? null,
+            atrPct: liveQuotes[result.ticker]?.atrPct ?? null,
+            deviationPct: liveQuotes[result.ticker]?.deviationPct ?? null,
+            changePct: liveQuotes[result.ticker]?.changePct ?? null,
+          }
+        : undefined,
+    })),
+  )
 
   let firstBarUnix: number | undefined
   let lastBarUnix: number | undefined
@@ -1384,6 +1400,7 @@ export async function POST(request: Request) {
         : { valid: false, errors: validation.errors, warnings: validation.warnings },
       liveQuotes,
       walkForwardByTicker,
+      rankingBoard,
       paperAdvisory: Object.keys(paperAdvisory).length > 0 ? paperAdvisory : undefined,
       optionsFeaturesByTicker:
         Object.keys(optionsFeaturesByTicker).length > 0 ? optionsFeaturesByTicker : undefined,

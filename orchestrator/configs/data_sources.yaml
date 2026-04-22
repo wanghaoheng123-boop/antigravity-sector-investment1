@@ -1,0 +1,10 @@
+providers:
+  prices:
+    - yahoo
+    - stooq
+    - cboe
+  options:
+    - yahoo_options
+  macro:
+    - fred
+confidence_threshold: 0.7

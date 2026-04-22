@@ -10,7 +10,9 @@ import EquityCurveChart from '@/components/backtest/EquityCurveChart'
 import InstrumentTable from '@/components/backtest/InstrumentTable'
 import TradeLog from '@/components/backtest/TradeLog'
 import ContextualAnalyticsZone from '@/components/zones/ContextualAnalyticsZone'
+import InstitutionalRankingBoard from '@/components/zones/InstitutionalRankingBoard'
 import type { BacktestResult, WalkForwardSummary } from '@/lib/backtest/engine'
+import { buildInstitutionalRanking } from '@/lib/alpha/institutionalRanking'
 import type { StrategyConfig } from '@/lib/strategy/strategyConfig'
 import {
   DEFAULT_STRATEGY_CONFIG,
@@ -76,6 +78,18 @@ interface SimulatorApiResponse {
     price?: number; changePct?: number; rsi14?: number | null; atrPct?: number | null
     deviationPct?: number | null; macdHist?: number | null; bbPctB?: number | null
     regime?: string; action?: 'BUY' | 'HOLD' | 'SELL'; confidence?: number
+  }>
+  rankingBoard?: Array<{
+    ticker: string
+    sector: string
+    rankScore: number
+    expectedReturnScore: number
+    riskControlScore: number
+    robustnessScore: number
+    timingScore: number
+    conviction: 'A' | 'B' | 'C'
+    thesis: string
+    actionBias: 'accumulate' | 'watch' | 'avoid'
   }>
   tickers: Array<{ ticker: string; success: boolean; error?: string }>
 }
@@ -224,6 +238,22 @@ function SimulatorPageContent() {
 
   const configFingerprint = useMemo(() => JSON.stringify(config), [config])
   const watchlistKey = watchlist.join(',')
+  const liveRankingBoard = useMemo(
+    () => liveResults?.rankingBoard?.slice(0, 8) ?? [],
+    [liveResults],
+  )
+  const backtestRankingBoard = useMemo(() => {
+    if (!backtestData || backtestData.results.length === 0) return []
+    const wfByTicker = new Map(
+      (backtestData.walkForward ?? []).map((w) => [w.ticker, w.summary] as const),
+    )
+    return buildInstitutionalRanking(
+      backtestData.results.map((result) => ({
+        result,
+        walkForward: wfByTicker.get(result.ticker) ?? null,
+      })),
+    ).slice(0, 8)
+  }, [backtestData])
 
   // Live quote refresh
   const refreshLiveQuotes = useCallback(async () => {
@@ -836,6 +866,12 @@ function SimulatorPageContent() {
                 data={optionsIntel}
                 loading={optionsIntelLoading}
               />
+            )}
+            {mode === 'live' && liveRankingBoard.length > 0 && (
+              <InstitutionalRankingBoard rows={liveRankingBoard} />
+            )}
+            {mode === 'backtest' && backtestRankingBoard.length > 0 && (
+              <InstitutionalRankingBoard rows={backtestRankingBoard} />
             )}
           </div>
         </div>

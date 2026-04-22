@@ -20,6 +20,11 @@ Create one uniform reporting language for all agents and all platforms so `conti
 - `artifacts/institutional-scorecard.json`
 - `artifacts/loop-mission/<run_id>.json`
 
+### Backtest matrix (remediation 2026-04)
+
+- Portfolio aggregation must use **calendar-aligned** OHLCV (`lib/backtest/calendarAlign.ts` via `scripts/backtest-matrix.ts`) so combined equity sums the same trading day across names.
+- When local warehouse/JSON depth caps history, multiple window lengths (10y/15y/…) can collapse to the **same** aligned row count; see `alignedTradingDays` and per-name medians in the matrix artifact.
+- Portfolio-level Sharpe/Sortino use the combined book; **median instrument** fields diagnose divergence from the combined row.
 ## Status Transition Rules
 
 - Only move a metric from Fail/Blocked to Pass when fresh evidence exists in current artifacts.

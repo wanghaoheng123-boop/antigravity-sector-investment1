@@ -1,0 +1,5 @@
+limits:
+  max_drawdown: 0.25
+  max_leverage: 2.0
+  max_daily_turnover: 1.2
+  max_options_weight: 0.6

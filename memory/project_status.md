@@ -2,10 +2,16 @@
 name: QUANTAN Project Status
 description: Canonical project progress snapshot and immediate pending queue for cross-agent continuity
 type: project
-last_updated: 2026-04-21
+last_updated: 2026-04-22
 ---
 
 # Status Snapshot
+
+## Active execution plan (tomorrow)
+
+Canonical next-session checklist: **`docs/NEXT_SESSION_PLAN_2026-04.md`** — phases A–E, testing matrix, definitions of done, and “continue” entry points.
+
+Phase 2 ranking + institutional gates (full spec): **`docs/PLAN_RANKING_PHASE2_GATES.md`**.
 
 ## Completed / shipped baseline
 
@@ -32,16 +38,18 @@ last_updated: 2026-04-21
 
 ## Resume queue (strict order)
 
-1. Finish Phase 8 data ingestion completeness and validation.
-2. Complete Phase 9 integration + verification.
-3. Execute Phases 10-16 following `docs/MASTER_PLAN_PHASES_8_16.md`.
-4. Keep function-zone + contextual analytics rollout aligned with `docs/FUNCTION_ZONE_TAXONOMY.md`.
-5. Run institutional loop mission (`scripts/loop-mission.ts`) and update scorecard artifacts each cycle.
-6. Validate commercial handover gates in `docs/COMMERCIAL_READINESS_CHECKLIST.md`.
+1. **Follow `docs/NEXT_SESSION_PLAN_2026-04.md` Phase A** — data depth / warehouse truth layer; re-run matrix → scorecard → loop until policies are clear.
+2. **Phase B** — decide strict vs documented staging gates; no silent threshold edits.
+3. **Phase C–E** — ranking calibration, live timing fields, Vitest for ranking, optimizer/reporting, inspection checklists before prod.
+4. Finish Phase 8 data ingestion completeness and validation (long-horizon backing store).
+5. Complete Phase 9 integration + verification.
+6. Execute Phases 10-16 following `docs/MASTER_PLAN_PHASES_8_16.md`.
+7. Keep function-zone + contextual analytics aligned with `docs/FUNCTION_ZONE_TAXONOMY.md`.
+8. Validate commercial handover gates in `docs/COMMERCIAL_READINESS_CHECKLIST.md`.
 
 ## Handoff rule
 
-When user says "continue", do not regenerate plans. Resume from the first unchecked item in this file and the phase table in `AGENTS.md`.
+When user says "continue", open **`docs/NEXT_SESSION_PLAN_2026-04.md`**, then the first pending line in the resume queue above and the phase table in `AGENTS.md`. Do not re-plan from scratch unless scope changes.
 
 ## Latest implementation checkpoint
 
@@ -55,4 +63,6 @@ When user says "continue", do not regenerate plans. Resume from the first unchec
   - `scripts/backtest-matrix.ts`
   - `scripts/scorecard-evaluate.ts`
   - `scripts/loop-mission.ts`
+- Institutional ranking board + engine: `lib/alpha/institutionalRanking.ts`, strict script `npm run backtest:ranking:strict`.
+- Next-session plan doc: `docs/NEXT_SESSION_PLAN_2026-04.md`.
 

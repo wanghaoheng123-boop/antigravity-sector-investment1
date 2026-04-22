@@ -417,6 +417,27 @@ export function backtestInstrument(
 
 // ─── Portfolio aggregator ─────────────────────────────────────────────────────
 
+/** Sample std (unbiased) for return series. */
+function sampleStdReturns(xs: number[]): number {
+  if (xs.length < 2) return 0
+  const mean = xs.reduce((a, b) => a + b, 0) / xs.length
+  const variance = xs.reduce((s, x) => s + (x - mean) ** 2, 0) / (xs.length - 1)
+  return Math.sqrt(Math.max(variance, 0))
+}
+
+/** Compound non-overlapping 5-day blocks into weekly total returns (≈ trading week). */
+function dailyReturnsToWeeklyBlocks(daily: number[]): number[] {
+  const w: number[] = []
+  for (let i = 0; i < daily.length; i += 5) {
+    const chunk = daily.slice(i, Math.min(i + 5, daily.length))
+    if (chunk.length < 3) continue
+    let acc = 1
+    for (const r of chunk) acc *= 1 + r
+    w.push(acc - 1)
+  }
+  return w
+}
+
 export interface PortfolioSummary {
   totalReturn: number
   annualizedReturn: number
@@ -465,6 +486,9 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
   // FIX C2/C3: Compute TRUE portfolio-level metrics from combined equity curve.
   // Each instrument has its own equity curve starting at `initialCapital`.
   // For portfolio metrics, we combine them into a single "virtual portfolio" curve.
+  // Callers that need day-aligned summation (e.g. `scripts/backtest-matrix.ts`) should
+  // pass results whose histories were built on the same calendar days — use
+  // `alignOhlcvSeries` before `backtestInstrument` so each index matches one session date.
   //
   // FIX C3: Use maximum common length (all instruments must have that many days)
   // rather than minimum, to avoid discarding instruments with longer histories.
@@ -534,6 +558,29 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
           const dsd = Math.sqrt(downsideVariance)
           if (dsd > 1e-10) {
             sortino = ((mean - rfD) / dsd) * Math.sqrt(252)
+          }
+        }
+
+        // Very small daily σ on a slowly drifting book makes Sharpe/Sortino ill-scaled; use weekly blocks.
+        const annVolDaily = sd * Math.sqrt(252)
+        if (annVolDaily < 0.03 && sd > 1e-10) {
+          const weekly = dailyReturnsToWeeklyBlocks(portfolioDailyReturns)
+          const rfW = 1.04 ** (1 / 52) - 1
+          if (weekly.length >= 12) {
+            const wm = weekly.reduce((a, b) => a + b, 0) / weekly.length
+            const wsd = sampleStdReturns(weekly)
+            if (wsd > 1e-10) {
+              sharpe = ((wm - rfW) / wsd) * Math.sqrt(52)
+            }
+            const wDown = weekly.map(r => Math.min(0, r - rfW))
+            const wNeg = wDown.filter(x => x < 0)
+            if (wNeg.length > 0) {
+              const wdv = wNeg.reduce((s, x) => s + x * x, 0) / weekly.length
+              const wdsd = Math.sqrt(wdv)
+              if (wdsd > 1e-10) {
+                sortino = ((wm - rfW) / wdsd) * Math.sqrt(52)
+              }
+            }
           }
         }
       }

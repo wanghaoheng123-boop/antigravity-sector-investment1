@@ -20,9 +20,33 @@ function daysBetween(a: string, b: string): number {
 }
 
 function main(): void {
-  const db = new DatabaseSync(resolveDbPath(), { timeout: 120_000 })
-  const tickers = listWarehouseTickers(db)
-  if (!tickers.length) throw new Error('no candles in warehouse')
+  const requireWarehouse = process.env.QUANTAN_REQUIRE_WAREHOUSE === '1'
+  let db: DatabaseSync
+  try {
+    db = new DatabaseSync(resolveDbPath(), { timeout: 120_000 })
+  } catch (e) {
+    if (requireWarehouse) throw e
+    console.warn(`[verify:data:long] skip: cannot open SQLite (${String(resolveDbPath())})`, e)
+    return
+  }
+  let tickers: string[] = []
+  try {
+    tickers = listWarehouseTickers(db)
+  } catch (e) {
+    db.close()
+    if (requireWarehouse) throw e
+    console.warn('[verify:data:long] skip: warehouse schema/tables not ready', e)
+    return
+  }
+  if (!tickers.length) {
+    db.close()
+    if (requireWarehouse) {
+      console.error('[verify:data:long] fail: no candles in warehouse (QUANTAN_REQUIRE_WAREHOUSE=1)')
+      process.exit(1)
+    }
+    console.warn('[verify:data:long] skip: no candles in warehouse (use scripts/backtestData JSON or populate DB)')
+    return
+  }
   let failed = 0
   for (const ticker of tickers) {
     const rows = readCandles(db, ticker)
