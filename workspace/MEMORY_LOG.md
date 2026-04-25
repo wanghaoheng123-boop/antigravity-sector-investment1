@@ -11,6 +11,7 @@ _None_
 | 2026-04-25T11:00 | MTM equity fix (engine.ts) | BLOCK | BLOCK | PASS | PASS | PASS | PASS | A/B blocked: GDrive corrupted node_modules; logic verified by code review + Deepseek corroboration |
 | 2026-04-25T11:45 | Autonomous wave loop + DeepSeek provider config | BLOCK | BLOCK | PASS | PASS* | PASS | PASS | Added scripts/autonomous-wave.ts + loop:autonomous + DeepSeek provider defaults. A/B blocked by local toolchain failure in this Drive checkout. D*: repository has historical keyword hits, but no new raw credentials introduced in touched files. |
 | 2026-04-25T21:45 | MTM end-to-end verification + 4 typecheck fixes | PASS | PASS | PASS | PASS | PASS | PASS | Mirrored project to C:\\quantan-work, npm ci, ran tsc (CLEAN, 0 errors after fixing 4 pre-existing) and vitest (82/82 PASS). Real backtest:matrix POST-MTM: Sharpe -6.26→-1.95 (4× better), ann -0.27%→+0.55%, maxDD 10.6%→19.9% (honest). |
+| 2026-04-25T22:30 | Workflow audit — Deepseek under-utilized | INFO | INFO | INFO | INFO | INFO | INFO | Spend over 4 sessions of heavy coding: 99.20→98.00 CNY = **1.20 CNY total** (~$0.17, ~5.7k tokens, 4 calls). Far too low. Updated delegation memory with HARD rules: any Read >100 lines, any new-script draft, any code review/audit must go through Deepseek first. Opus reserved for tool calls + decisions + verification only. Audit cadence: start/mid/end-session balance checks. |
 
 ## Session History
 ### Session 1 — 2026-04-23 — claude-sonnet-4-6
