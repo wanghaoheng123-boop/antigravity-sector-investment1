@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "project": "QUANTAN-sector-investment",
   "created": "2026-04-23T00:00:00Z",
-  "last_updated": "2026-04-25T21:45:00Z",
+  "last_updated": "2026-04-25T22:05:00Z",
   "active_agent": "claude-opus-4-7",
   "last_inspection": {
     "timestamp": "2026-04-25T21:45:00Z",
@@ -88,5 +88,5 @@
     }
   ],
   "checkpoint": null,
-  "next_agent_instruction": "Session 6 baseline established. POST-MTM honest scorecard: ann +0.55%, Sharpe -1.95, Sortino -2.27, maxDD 19.9%, winRate 44.1% on 13-instrument 10y window. To push toward A1 staging gate (>3% ann) the strategy needs real alpha, not measurement fixes. Highest-EV next steps: (a) expand warehouse to include SPY/QQQ/GLD (currently capped at A-G alphabetically — 23 of 56 expected tickers) via `npm run fetch:history`; (b) re-run `npm run optimize:signals` with the new MTM-correct measurement to find new optima — quick grid showed mc=1+ct=50+adx=0 yields Sharpe -1.78 (10% better) but needs walk-forward validation before promoting; (c) consider sector/regime filter (SPY 50>200 SMA gate) which Deepseek estimated +3-5% ann but adds dependency on broad-index data. Toolchain is unblocked at C:\\Users\\wang haoheng\\AppData\\Local\\quantan-work."
+  "next_agent_instruction": "Session 7 shipped commit b902105 to origin/cursor/trading-simulator (MTM fix + typecheck cleanup). Vercel auto-deploys via linked project. Next: (1) verify Vercel deploy at https://vercel.com/team_TXgmnu4Bwg2rqPJupexBjrU9/quantan-sector-investment — commit b902105 should be 'Ready' within 5 min; (2) the optimize:signals run on C:\\Users\\wang haoheng\\AppData\\Local\\quantan-work was still in progress at session end — check `artifacts/signal-param-optimization.json` mtime, inspect top configs under MTM-correct measurement, walk-forward validate before promoting any to DEFAULT_CONFIG; (3) DeepSeek UI/UX recs from session 7 (saved in MEMORY_LOG): start with #4 (Desk alert blotter conditional formatting) which is lowest-risk and needs no backend changes; (4) refresh warehouse via `npm run fetch:history` — currently capped at A-G (23 tickers, missing SPY/QQQ/GLD). Toolchain is unblocked at the C:\\ mirror — work there and `cp` deltas back to G:\\ for commits."
 }

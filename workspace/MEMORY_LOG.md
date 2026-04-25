@@ -107,6 +107,23 @@ Next agent must:
 **Blockers:** node_modules/toolchain instability in this checkout.
 **Next agent must:** Start from `workspace/SESSION_STATE.json` next instruction and execute Iteration 1 immediately.
 ---
+### Session 7 — 2026-04-25 — claude-opus-4-7 (deploy + research)
+Goal: Continue polish. Use DeepSeek aggressively for UI/UX/code research. Push to GitHub. Trigger Vercel deploy. Save progress with token buffer.
+Done:
+- Audited git state (60 status lines were normal: 39 untracked + 17 modified + staged from codex-5.3, no actual D entries).
+- Kicked off `npm run optimize:signals` on C:\\ mirror (288-combo grid × 16 tickers); did not complete within session budget — partial work, will be picked up next session via the existing artifact.
+- DeepSeek-v4-pro UI/UX scan (~770 tokens): proposed 5 high-EV improvements (PriceTicker w/sparklines, KLineChart regime background, Heatmap treemap, Desk alert blotter conditional formatting, EMA-Ranking sector river). NOT shipped this session — UI changes need a deployed preview to verify, which requires the post-push Vercel deploy first.
+- Committed b902105 to `cursor/trading-simulator` with the verified MTM fix and typecheck cleanup.
+- Pushed to GitHub origin (Vercel auto-deploys via the linked project at prj_Rk9lpO090omeU1IiFvHmTG2HMnbk).
+- DeepSeek balance check at session end: ~99 CNY (used ~1k tokens this session, ~2k cumulative across 4 sessions).
+Verify: A=PASS B=PASS C=PASS D=PASS E=PASS F=PASS
+Blockers: None — toolchain unblocked at C:\\ mirror; commit pushed; Vercel handles deploy.
+Next agent must:
+1. Verify Vercel deploy succeeded — check `https://vercel.com/<team>/quantan-sector-investment` deployments page or `gh pr checks` if a PR exists. Status of commit b902105 should be "Ready" in <5 min.
+2. Pick up the still-running optimize:signals on C:\\Users\\wang haoheng\\AppData\\Local\\quantan-work — when done, inspect `artifacts/signal-param-optimization.json` for top configs under MTM-correct measurement. Walk-forward validate before promoting to DEFAULT_CONFIG.
+3. After Vercel preview lands, apply DeepSeek's UI/UX recommendation #4 first (Desk alert blotter conditional formatting — lowest risk, no new dependencies).
+4. Refresh warehouse via `npm run fetch:history` (currently A-G only; missing SPY/QQQ/GLD).
+
 ### Session 6 — 2026-04-25 — claude-opus-4-7 (continuation)
 Goal: Continue debugging/backtesting; ensure all functions work and give correct info; live data accuracy; full-stack analysis + optimisation. User directive: leverage MCP DeepSeek-v4-pro to lower Opus token cost.
 Done:
