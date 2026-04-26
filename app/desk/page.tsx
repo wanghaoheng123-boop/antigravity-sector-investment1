@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { DESK_TICKERS } from '@/lib/deskTickers'
 import { SECTORS } from '@/lib/sectors'
@@ -16,6 +16,33 @@ interface Quote {
 }
 
 const REFRESH_MS = { fast: 2000, normal: 5000, slow: 15000 } as const
+
+function pctHeatClass(pct: number | undefined): string {
+  if (pct === undefined || Number.isNaN(pct)) return ''
+  const a = Math.abs(pct)
+  const pos = pct >= 0
+  if (a >= 3) return pos ? 'bg-emerald-950/70 text-emerald-300 font-semibold' : 'bg-red-950/70 text-red-300 font-semibold'
+  if (a >= 1.5) return pos ? 'bg-emerald-950/40 text-emerald-400' : 'bg-red-950/40 text-red-400'
+  if (a >= 0.5) return pos ? 'bg-emerald-950/20 text-emerald-400' : 'bg-red-950/20 text-red-400'
+  return pos ? 'text-emerald-500' : 'text-red-500'
+}
+
+function thresholdLabel(pct: number | undefined): { label: string; positive: boolean } | null {
+  if (pct === undefined || Number.isNaN(pct)) return null
+  const a = Math.abs(pct)
+  const positive = pct >= 0
+  if (a >= 5) return { label: '5%', positive }
+  if (a >= 3) return { label: '3%', positive }
+  if (a >= 2) return { label: '2%', positive }
+  return null
+}
+
+function vixRowClass(ticker: string, price: number | undefined): string {
+  if (ticker !== '^VIX' || price === undefined) return ''
+  if (price >= 30) return 'bg-red-950/15'
+  if (price <= 15) return 'bg-emerald-950/10'
+  return ''
+}
 
 function labelForTicker(t: string): string {
   if (t === '^VIX') return 'VIX'
@@ -41,7 +68,12 @@ export default function DeskPage() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [intervalKey, setIntervalKey] = useState<keyof typeof REFRESH_MS>('normal')
   const [showWatchOnly, setShowWatchOnly] = useState(false)
+  const [flashMap, setFlashMap] = useState<Record<string, number>>({})
   const { items: watchlist, has, hydrated } = useWatchlist()
+
+  const prevQuotesRef = useRef<Record<string, Quote>>({})
+  const flashTimersRef = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const volAvgRef = useRef<Record<string, { sum: number; n: number }>>({})
 
   const param = useMemo(() => DESK_TICKERS.map(encodeURIComponent).join(','), [])
 
@@ -56,6 +88,47 @@ export default function DeskPage() {
         })
         setQuotes(map)
         setLastUpdate(new Date())
+
+        const prev = prevQuotesRef.current
+        const flashed: string[] = []
+        for (const ticker in map) {
+          const row = map[ticker]
+          const old = prev[ticker]
+          if (old && old.price !== row.price) flashed.push(ticker)
+
+          if (row.volume > 0) {
+            const v = volAvgRef.current[ticker] ?? { sum: 0, n: 0 }
+            if (v.n < 20) {
+              v.sum += row.volume
+              v.n += 1
+            } else {
+              v.sum = v.sum * (19 / 20) + row.volume * (1 / 20)
+            }
+            volAvgRef.current[ticker] = v
+          }
+        }
+        if (flashed.length > 0) {
+          const expiry = Date.now() + 600
+          setFlashMap((prevMap) => {
+            const next = { ...prevMap }
+            for (const t of flashed) next[t] = expiry
+            return next
+          })
+          for (const t of flashed) {
+            const existing = flashTimersRef.current[t]
+            if (existing) clearTimeout(existing)
+            flashTimersRef.current[t] = setTimeout(() => {
+              setFlashMap((prevMap) => {
+                if (!prevMap[t]) return prevMap
+                const next = { ...prevMap }
+                delete next[t]
+                return next
+              })
+              delete flashTimersRef.current[t]
+            }, 600)
+          }
+        }
+        prevQuotesRef.current = map
       }
     } catch {
       /* ignore */
@@ -68,6 +141,29 @@ export default function DeskPage() {
     const id = setInterval(fetchPrices, ms)
     return () => clearInterval(id)
   }, [fetchPrices, intervalKey])
+
+  useEffect(() => {
+    return () => {
+      for (const t in flashTimersRef.current) clearTimeout(flashTimersRef.current[t])
+      flashTimersRef.current = {}
+    }
+  }, [])
+
+  const isFlashing = useCallback(
+    (t: string): boolean => {
+      const expiry = flashMap[t]
+      return expiry !== undefined && expiry > Date.now()
+    },
+    [flashMap],
+  )
+
+  const isVolumeSpike = useCallback((t: string, vol: number | undefined): boolean => {
+    if (vol === undefined || vol <= 0) return false
+    const v = volAvgRef.current[t]
+    if (!v || v.n < 5) return false
+    const avg = v.sum / v.n
+    return avg > 0 && vol > avg * 2.5
+  }, [])
 
   const rows = useMemo(() => {
     let list = [...DESK_TICKERS]
@@ -156,21 +252,42 @@ export default function DeskPage() {
                   {sectionRows.map(({ t, label, q }) => {
                     const up = (q?.changePct ?? 0) >= 0
                     const sym = t === '^VIX' ? 'VIX' : t
+                    const flashing = isFlashing(t)
+                    const flashCls = flashing ? 'bg-yellow-500/15' : ''
+                    const heatCls = q ? pctHeatClass(q.changePct) : 'text-slate-600'
+                    const tl = q ? thresholdLabel(q.changePct) : null
+                    const spike = isVolumeSpike(t, q?.volume)
+                    const vixCls = q ? vixRowClass(t, q.price) : ''
                     return (
-                      <tr key={t} className="border-b border-slate-800/40 hover:bg-slate-900/60">
+                      <tr key={t} className={`border-b border-slate-800/40 hover:bg-slate-900/60 ${vixCls}`}>
                         <td className="px-2 py-1 text-slate-200 font-semibold">{sym}</td>
                         <td className="px-2 py-1 text-slate-500 truncate max-w-[180px]" title={label}>
                           {label}
                         </td>
-                        <td className="px-2 py-1 text-right text-slate-100">{q ? q.price.toFixed(2) : '—'}</td>
+                        <td className={`px-2 py-1 text-right text-slate-100 transition-colors duration-500 ${flashCls}`}>
+                          {q ? q.price.toFixed(2) : '—'}
+                        </td>
                         <td className={`px-2 py-1 text-right ${q ? (up ? 'text-emerald-400' : 'text-red-400') : 'text-slate-600'}`}>
                           {q ? `${up ? '+' : ''}${q.change.toFixed(2)}` : '—'}
                         </td>
-                        <td className={`px-2 py-1 text-right hidden sm:table-cell ${q ? (up ? 'text-emerald-400' : 'text-red-400') : 'text-slate-600'}`}>
+                        <td className={`px-2 py-1 text-right hidden sm:table-cell transition-colors duration-500 ${heatCls} ${flashCls}`}>
                           {q ? `${up ? '+' : ''}${q.changePct.toFixed(2)}` : '—'}
+                          {tl && (
+                            <span
+                              className={`ml-1 px-1 text-[10px] font-black rounded ${tl.positive ? 'bg-emerald-600' : 'bg-red-600'} text-white`}
+                            >
+                              {tl.label}
+                            </span>
+                          )}
                         </td>
-                        <td className="px-2 py-1 text-right text-slate-600 hidden md:table-cell">
-                          {q && q.volume ? (q.volume / 1e6).toFixed(2) : '—'}
+                        <td
+                          className={
+                            spike
+                              ? 'px-2 py-1 text-right hidden md:table-cell bg-cyan-950/50 text-cyan-300 font-semibold border-l-2 border-cyan-400'
+                              : 'px-2 py-1 text-right text-slate-600 hidden md:table-cell'
+                          }
+                        >
+                          {q && q.volume ? `${spike ? '⚡ ' : ''}${(q.volume / 1e6).toFixed(2)}` : '—'}
                         </td>
                         <td className="px-2 py-1 text-center text-amber-500/90">{has(t) ? '★' : ''}</td>
                         <td className="px-2 py-1">
