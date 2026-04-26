@@ -2,7 +2,7 @@
   "schema_version": "1.0",
   "project": "QUANTAN-sector-investment",
   "created": "2026-04-23T00:00:00Z",
-  "last_updated": "2026-04-25T23:05:00Z",
+  "last_updated": "2026-04-26T14:50:00Z",
   "active_agent": "claude-opus-4-7",
   "last_inspection": {
     "timestamp": "2026-04-25T21:45:00Z",
@@ -67,6 +67,24 @@
       "notes": "1) Skeleton.tsx: added `style?: React.CSSProperties` to props (was used by SkeletonTable but missing from interface). 2) strategyConfig.ts toBacktestConfig: added 3 Phase-3 breakout fields to literal (enableBreakoutEntry, breakoutMinPullbackPct, breakoutMaxPullbackPct). 3) alpha-vs-spy.ts: replaced phantom `strat.dailyReturns` with averaged per-instrument dailyReturns (the original was reading undefined → IR was always null; this is a real bug fix, not just a type fix). 4) phase2-optimizer.ts: `t.pnl` → `t.pnlPct` (Trade has pnlPct, not pnl; win-rate calc was always 0). After all 4 fixes: tsc --noEmit returns 0 errors (was 4). vitest 82/82 still PASS."
     },
     {
+      "id": "TASK-UI-014",
+      "title": "PriceTicker sparklines (DeepSeek S7 rec #1)",
+      "status": "DONE_PUSHED_PENDING_BROWSER_VERIFY",
+      "priority": "MEDIUM",
+      "files_touched": ["components/PriceTicker.tsx", "app/page.tsx"],
+      "verify_status": {"A":"PASS","B":"PASS","C":"PASS","D":"PASS","E":"PASS","F":"PASS"},
+      "notes": "Commit 54f925d on cursor/trading-simulator. components/Sparkline.tsx already existed; wired into PriceTicker (TickerItem +history?: number[], renders 48x16 SVG with direction-coloured stroke when history>=2). app/page.tsx maintains 30-point rolling buffer per ticker via priceHistoryRef + historyTick counter to drive useMemo invalidation. History accumulates from each /api/prices poll (15s cadence). C:\\ mirror tsc=0/vitest=82/82. No new deps. First-load shows no spark until ~30s; full buffer in 7.5min — acceptable since users rarely hit the home page and bounce in <30s."
+    },
+    {
+      "id": "TASK-UI-013",
+      "title": "Desk alert blotter conditional formatting (DeepSeek S7 rec #4)",
+      "status": "DONE_PUSHED_PENDING_BROWSER_VERIFY",
+      "priority": "MEDIUM",
+      "files_touched": ["app/desk/page.tsx"],
+      "verify_status": {"A":"PASS","B":"PASS","C":"PASS","D":"PASS","E":"PASS","F":"PASS"},
+      "notes": "Commit d4bc3fe pushed to cursor/trading-simulator. DeepSeek v4 pro spec (~1.5k tok, 0.03 CNY); Opus applied via Edit. Five layers in app/desk/page.tsx (200->318 LOC): pctHeatClass 4-tier %% heatmap, thresholdLabel 2/3/5%% badges, vixRowClass regime tint, flash-on-tick (600ms yellow via prevQuotesRef + flashMap), volume spike via 20-window EMA in volAvgRef (>2.5x avg after 5 polls). C:\\ mirror tsc=0 errors, vitest=82/82 PASS. Browser verification deferred to Vercel rebuild — preview_start blocked by BLK-001 (G:\\ node_modules placeholders; npm --prefix and cmd /c workarounds didn't escape harness path resolution). NEAR-MISS captured: first commit attempt accidentally swept up 46 prior-session pre-staged changes (deletions of test files, components, docs); soft-reset and re-staged only app/desk/page.tsx. Going forward: ALWAYS git diff --cached --stat before every commit on this repo."
+    },
+    {
       "id": "TASK-AUTO-011",
       "title": "Autonomous 5-hour wave loop with expert cross-checks + DeepSeek provider enablement",
       "status": "DONE_PENDING_VERIFY",
@@ -88,5 +106,5 @@
     }
   ],
   "checkpoint": null,
-  "next_agent_instruction": "Session 8 status: Vercel preview deploy is GREEN at https://quantan-sector-investment-i53kzdzz6.vercel.app (commit 9aedfd6 — Phase-2/3 rollforward + MTM fix). Production still on gbguguaa2 (3d old). Open work: (1) **Promote to production**: `vercel promote https://quantan-sector-investment-i53kzdzz6.vercel.app --scope wanghaoheng123-7549s-projects` OR merge cursor/trading-simulator → main via PR. User decision. (2) **Optimize:signals**: 4 stuck processes were killed (running for hours, no output — script doesn't print progress). Re-run with `--prefer-offline` or limit grid; consider parallelizing per-ticker. (3) **UI/UX queue** (DeepSeek session 7 recs in MEMORY_LOG): now that Preview is live, validate against the URL before merging any. Start with Desk alert blotter conditional formatting. (4) **Warehouse refresh** (A-G only currently). (5) **Workflow discipline**: HARD rule now in `~/.claude/projects/.../memory/delegation_workflow.md` — Deepseek-first for any Read >100 lines, code audit, or new-script draft. Audit Deepseek balance at session start (currently 98.00 CNY)."
+  "next_agent_instruction": "Session 9 closed. Two UI items shipped on cursor/trading-simulator: TASK-UI-013 Desk conditional formatting (d4bc3fe) and TASK-UI-014 PriceTicker sparklines (54f925d). Both verified C:\\ mirror tsc=0/vitest=82/82; live verification deferred to Vercel preview redeploy (BLK-001 still blocks local preview from G:\\). Open: (1) Vercel preview should be rebuilt at HEAD of cursor/trading-simulator — load /desk and / (home), confirm formatting + sparklines render. (2) Promote-to-prod still REQUIRES explicit user authorization (preview 9aedfd6 baseline now superseded by 54f925d). (3) Next UI items, in order: #3 Heatmap treemap (app/heatmap/page.tsx, ~80 LOC squarified-layout, parse marketCap string from /api/prices), #2 KLineChart regime bg (components/KLineChart.tsx is 999 LOC — Deepseek-first per delegation rule), #5 EMA-Ranking sector river (components/EmaRankingTable.tsx 171 LOC). (4) Optimize:signals re-run + warehouse refresh still queued. DeepSeek balance at S9 close: 97.97 CNY (used ~0.03 CNY this session — design pass on Desk only; long pro prompts time out, chunk to <2k tokens). HARD rule: `git diff --cached --stat` before EVERY commit on this repo (near-miss this session — 46 pre-staged files almost shipped)."
 }
