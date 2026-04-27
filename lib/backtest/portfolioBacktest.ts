@@ -14,7 +14,7 @@
  */
 
 import type { OhlcvRow } from '@/scripts/backtest/dataLoader'
-import { enhancedCombinedSignal, DEFAULT_CONFIG } from '@/lib/backtest/signals'
+import { combinedSignal, DEFAULT_CONFIG } from '@/lib/backtest/signals'
 import type { BacktestConfig } from '@/lib/backtest/signals'
 import { atrArray } from '@/lib/quant/indicators'
 import {
@@ -160,14 +160,9 @@ export function runPortfolioBacktest(
       const lookback = rows.slice(0, idx + 1)
       const closes = lookback.map(r => r.close)
       const bars = lookback.map(r => ({ open: r.open, high: r.high, low: r.low, close: r.close }))
-      const ohlcv = lookback.map(r => ({
-        open: r.open, high: r.high, low: r.low, close: r.close,
-        volume: r.volume ?? 0, time: r.time,
-      }))
-
       let signalAction: 'BUY' | 'HOLD' | 'SELL' = 'HOLD'
       try {
-        const sig = enhancedCombinedSignal(ticker, currentDate, price, closes, bars, ohlcv, cfg)
+        const sig = combinedSignal(ticker, currentDate, price, closes, bars, cfg)
         signalAction = sig.action
       } catch { /* keep HOLD on error */ }
 
@@ -232,14 +227,9 @@ export function runPortfolioBacktest(
         const lookback = rows.slice(0, idx + 1)
         const closes = lookback.map(r => r.close)
         const bars = lookback.map(r => ({ open: r.open, high: r.high, low: r.low, close: r.close }))
-        const ohlcv = lookback.map(r => ({
-          open: r.open, high: r.high, low: r.low, close: r.close,
-          volume: r.volume ?? 0, time: r.time,
-        }))
-
         let sig
         try {
-          sig = enhancedCombinedSignal(ticker, currentDate, price, closes, bars, ohlcv, cfg)
+          sig = combinedSignal(ticker, currentDate, price, closes, bars, cfg)
         } catch { continue }
 
         if (sig.action !== 'BUY') continue
