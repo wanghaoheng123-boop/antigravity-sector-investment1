@@ -71,6 +71,8 @@ export function macdFn(closes: number[], fast = 12, slow = 26, signal = 9): {
   for (let si = 0; si < emaSlow.length; si++) {
     const t = slow - 1 + si
     const fi = t - (fast - 1)
+    // fi can be negative when t < fast-1 (not enough bars for fast EMA yet); skip those
+    if (fi < 0 || fi >= emaFast.length) continue
     const val = emaFast[fi] - emaSlow[si]
     outLine[t] = val
     macdVals.push(val)
@@ -218,12 +220,39 @@ export function adx(bars: OhlcBar[], period = 14): {
 export function stochRsi(closes: number[], rsiPeriod = 14, stochPeriod = 14): number[] {
   const rsiVals = rsi(closes, rsiPeriod)
   const out: number[] = new Array(closes.length).fill(NaN)
-  for (let i = rsiPeriod + stochPeriod - 1; i < closes.length; i++) {
-    const window = rsiVals.slice(i - stochPeriod + 1, i + 1).filter(v => Number.isFinite(v))
-    if (window.length < stochPeriod) continue
-    const lo = Math.min(...window)
-    const hi = Math.max(...window)
-    out[i] = hi - lo > 0 ? (rsiVals[i] - lo) / (hi - lo) : 0.5
+  const minDeque: number[] = []
+  const maxDeque: number[] = []
+  const finiteFlags: number[] = new Array(closes.length).fill(0)
+  let finiteInWindow = 0
+
+  for (let i = 0; i < closes.length; i++) {
+    const windowStart = i - stochPeriod + 1
+    const v = rsiVals[i]
+    const isFiniteVal = Number.isFinite(v)
+    finiteFlags[i] = isFiniteVal ? 1 : 0
+    finiteInWindow += finiteFlags[i]
+
+    // Remove value exiting the rolling window from finite counter.
+    const leavingIdx = i - stochPeriod
+    if (leavingIdx >= 0) finiteInWindow -= finiteFlags[leavingIdx]
+
+    // Drop stale indices first.
+    while (minDeque.length && minDeque[0] < windowStart) minDeque.shift()
+    while (maxDeque.length && maxDeque[0] < windowStart) maxDeque.shift()
+
+    if (isFiniteVal) {
+      while (minDeque.length && rsiVals[minDeque[minDeque.length - 1]] >= v) minDeque.pop()
+      while (maxDeque.length && rsiVals[maxDeque[maxDeque.length - 1]] <= v) maxDeque.pop()
+      minDeque.push(i)
+      maxDeque.push(i)
+    }
+
+    if (i < rsiPeriod + stochPeriod - 1) continue
+    if (finiteInWindow < stochPeriod || !minDeque.length || !maxDeque.length) continue
+
+    const lo = rsiVals[minDeque[0]]
+    const hi = rsiVals[maxDeque[0]]
+    out[i] = hi - lo > 0 ? (v - lo) / (hi - lo) : 0.5
   }
   return out
 }
@@ -251,7 +280,9 @@ export function roc(closes: number[], period = 252): number[] {
 export function relativeVolume(volumes: number[], period = 20): number[] {
   const out: number[] = new Array(volumes.length).fill(NaN)
   for (let i = period - 1; i < volumes.length; i++) {
-    const avg = volumes.slice(i - period + 1, i + 1).reduce((a, b) => a + b, 0) / period
+    // slice is end-exclusive: [i - period + 1, i] gives exactly `period` elements
+    const window = volumes.slice(i - period + 1, i + 1)
+    const avg = window.reduce((a, b) => a + b, 0) / window.length
     out[i] = avg > 0 ? volumes[i] / avg : NaN
   }
   return out
@@ -281,13 +312,31 @@ export function ema50DeviationPct(price: number, closes: number[]): number | nul
  */
 export function cmo(closes: number[], period = 14): number[] {
   const out: number[] = new Array(closes.length).fill(NaN)
+  if (closes.length < period + 1) return out
+
+  let up = 0
+  let down = 0
+
+  // Seed first window (j = 1..period) so first valid output is at i=period.
+  for (let j = 1; j <= period; j++) {
+    const d = closes[j] - closes[j - 1]
+    if (d > 0) up += d
+    else if (d < 0) down += Math.abs(d)
+  }
+
   for (let i = period; i < closes.length; i++) {
-    let up = 0, down = 0
-    for (let j = i - period + 1; j <= i; j++) {
-      const d = closes[j] - closes[j - 1]
-      if (d > 0) up += d
-      else if (d < 0) down += Math.abs(d)
+    if (i > period) {
+      // Remove oldest delta leaving the window: j = i - period
+      const oldD = closes[i - period] - closes[i - period - 1]
+      if (oldD > 0) up -= oldD
+      else if (oldD < 0) down -= Math.abs(oldD)
+
+      // Add newest delta entering the window: j = i
+      const newD = closes[i] - closes[i - 1]
+      if (newD > 0) up += newD
+      else if (newD < 0) down += Math.abs(newD)
     }
+
     const denom = up + down
     out[i] = denom > 0 ? 100 * (up - down) / denom : 0
   }
@@ -328,6 +377,16 @@ export function sma200Slope(closes: number[]): number | null {
 /**
  * Price was within +5% of 200SMA in the last 20 bars — confirms it's not a "forever falling" stock.
  */
+
+/** Pre-computes the maximum 252-bar high from a price series in O(n) — used by breakout entry. */
+export function lookbackHigh252(bars: OhlcBar[]): number {
+  let max = -Infinity
+  for (let i = Math.max(0, bars.length - 252); i < bars.length; i++) {
+    const h = bars[i].high
+    if (h > max) max = h
+  }
+  return max
+}
 export function priceWasNearSmaRecently(closes: number[], thresholdPct = 5): boolean {
   if (closes.length < 220) return false
   const window = closes.slice(-20)
@@ -649,11 +708,11 @@ export function combinedSignal(
   // ── Phase 3: Breakout entry (Minervini-style new-high pullback) ─────────
   // Fires when price is a modest pullback from a recent 252-bar high AND above 200-SMA.
   // Captures trend-continuation setups the dip-only regime logic misses.
+  // Pre-compute the 252-bar rolling high once (O(n)) instead of Math.max on every bar (O(n²)).
   let breakoutBullish = false
   let recentHighPullbackPct: number | null = null
   if (cfg.enableBreakoutEntry && bars.length >= 252) {
-    const highs = bars.slice(-252).map(b => b.high)
-    const lookbackHigh = Math.max(...highs)
+    const lookbackHigh = lookbackHigh252(bars)
     if (Number.isFinite(lookbackHigh) && lookbackHigh > 0) {
       recentHighPullbackPct = ((lookbackHigh - price) / lookbackHigh) * 100
       const aboveSMA200 = regime.deviationPct !== null && regime.deviationPct !== undefined && regime.deviationPct > 0
@@ -699,7 +758,19 @@ export function combinedSignal(
   }
 
   // Confidence: base regime confidence + (confirms / max) × 25pts bonus
-  const maxConfirms = (cfg.adxThreshold > 0 ? 5 : 4) + (cfg.enableBreakoutEntry ? 1 : 0)
+  const maxConfirms = Math.max(
+    1,
+    [
+      true, // RSI
+      true, // MACD
+      true, // ATR%
+      true, // BB%B
+      cfg.adxThreshold > 0, // ADX
+      true, // StochRSI
+      cfg.rvolThreshold > 0, // RVOL
+      cfg.enableBreakoutEntry, // breakout
+    ].filter(Boolean).length,
+  )
   const confidence = Math.min(100, regime.confidence + Math.round((Math.min(bullishCount, maxConfirms) / maxConfirms) * 25))
   if (confidence < cfg.confidenceThreshold && action !== 'SELL') action = 'HOLD'
 
@@ -711,8 +782,11 @@ export function combinedSignal(
   let kellyFrac = 0.10
   if (action === 'BUY') {
     const minConf = cfg.confidenceThreshold   // e.g. 55
+    // Use base regime confidence for Kelly win-prob mapping so confirms bonus
+    // doesn't get counted twice (once in confidence and again in Kelly sizing).
+    const kellySourceConfidence = regime.confidence
     const winProb = Math.max(0.40, Math.min(0.75,
-      0.40 + Math.max(0, confidence - minConf) / (100 - minConf) * 0.35
+      0.40 + Math.max(0, kellySourceConfidence - minConf) / (100 - minConf) * 0.35
     ))
     // Implied avg win / avg loss: 1.5 for standard dips, 2.0 for high-conviction
     // kellyFraction(p, avgWin, avgLoss) uses b = avgWin/avgLoss internally
