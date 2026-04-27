@@ -5,6 +5,7 @@ import { classifyYieldCurve } from './yieldCurve'
 
 export type BusinessCyclePhase =
   | 'recovery'
+  | 'early_cycle'  // gap filler: [0.25, 0.42] composite score
   | 'expansion'
   | 'late_cycle'
   | 'slowdown'
@@ -36,7 +37,8 @@ export function computeBusinessCycleScore(inputs: {
   const rp = recessionProbabilityFromSpread(yc.latestSpread10y3m)
 
   const laborStress = Math.min(1, Math.max(0, (unrate - 4) / 3))
-  const claimsStress = Math.min(1, Math.max(0, (claims - 250_000) / 250_000))
+  // ICSAs are reported in thousands (e.g. 250 = 250,000 claims); normalize to raw count
+  const claimsStress = Math.min(1, Math.max(0, (claims - 250) / 250))
   const policyStress = ff.stance === 'aggressive' ? 0.8 : ff.stance === 'hiking' ? 0.5 : 0.2
   const inversionStress = yc.isInverted ? 0.9 : 0.2
   const compositeScore =
@@ -47,10 +49,12 @@ export function computeBusinessCycleScore(inputs: {
   else if (compositeScore > 0.65) phase = 'contraction'
   else if (compositeScore > 0.52) phase = 'slowdown'
   else if (compositeScore > 0.42) phase = 'late_cycle'
+  else if (compositeScore >= 0.25) phase = 'early_cycle'   // gap filler: [0.25, 0.42] → early_cycle
   else if (compositeScore < 0.25) phase = 'recovery'
 
   const sectorBiasByPhase: Record<BusinessCyclePhase, { overweight: string[]; underweight: string[] }> = {
     recovery: { overweight: ['XLY', 'XLF', 'XLI'], underweight: ['XLU', 'XLP'] },
+    early_cycle: { overweight: ['XLY', 'XLF', 'XLI'], underweight: ['XLU', 'XLP'] }, // similar to recovery
     expansion: { overweight: ['XLK', 'XLE', 'XLB'], underweight: ['XLU', 'XLV'] },
     late_cycle: { overweight: ['XLE', 'XLB', 'XLV'], underweight: ['XLF', 'XLY'] },
     slowdown: { overweight: ['XLV', 'XLP', 'XLU'], underweight: ['XLY', 'XLF'] },

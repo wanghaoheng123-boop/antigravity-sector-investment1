@@ -385,8 +385,10 @@ export function findGammaFlipStrike(ladder: GammaStrikeLevel[]): number {
     const curr = ladder[i]
     const next = ladder[i + 1]
     if (curr.netGamma > 0 && next.netGamma < 0) {
-      // Linear interpolation to find crossing point
-      const ratio = curr.netGamma / (curr.netGamma - next.netGamma)
+      const denominator = curr.netGamma - next.netGamma
+      // Guard: when adjacent strikes have equal/near-equal net gamma, avoid division by zero
+      if (Math.abs(denominator) < 1e-12) break
+      const ratio = curr.netGamma / denominator
       flipStrike = curr.strike + ratio * (next.strike - curr.strike)
       break
     }
@@ -423,9 +425,10 @@ export function calcMaxPain(
     return { expiry: expiry.date, strike: maxPainStrike, pain: minPain }
   })
 
-  // Overall: weight by time-to-expiry (higher weight for nearer expiries)
+  // Weight by time-to-expiry; near-expiry = higher gamma impact. Use max(0, ...) on the
+  // time delta so past expiries don't receive amplified weight (>1).
   const weights = perExpiryResults.map(r =>
-    Math.exp(-0.04 * (new Date(r.expiry).getTime() - Date.now()) / (1000 * 365 * 24 * 3600))
+    Math.exp(-0.04 * Math.max(0, new Date(r.expiry).getTime() - Date.now()) / (1000 * 365 * 24 * 3600))
   )
   const totalWeight = weights.reduce((s, w) => s + w, 0)
   const weightedStrike = totalWeight > 0

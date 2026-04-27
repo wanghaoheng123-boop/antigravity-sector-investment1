@@ -1,0 +1,474 @@
+{
+  "generatedAt": "2026-04-23T06:01:21.129Z",
+  "universe": [
+    "NVDA",
+    "MSFT",
+    "XOM",
+    "CVX",
+    "BRK-B",
+    "JPM",
+    "LLY",
+    "UNH",
+    "AMZN",
+    "TSLA",
+    "GE",
+    "RTX",
+    "SPY",
+    "QQQ",
+    "GLD",
+    "BTC"
+  ],
+  "totalCombos": 288,
+  "topConfigs": [
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 2,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 57,
+      "winRate": 0.5685185185185184,
+      "annReturn": 0.004469858944409745,
+      "maxDD": 0.03458737165601121,
+      "sharpe": -22.073095590333434,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 2,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 57,
+      "winRate": 0.5685185185185184,
+      "annReturn": 0.00404672777426382,
+      "maxDD": 0.032015576114336204,
+      "sharpe": -22.294275588041383,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 2,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 58,
+      "winRate": 0.5653439153439153,
+      "annReturn": 0.003976673940751317,
+      "maxDD": 0.03676420170756849,
+      "sharpe": -22.065223504517057,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 2,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 58,
+      "winRate": 0.5653439153439153,
+      "annReturn": 0.0035933251785317394,
+      "maxDD": 0.033996493282396026,
+      "sharpe": -22.285567821155535,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5651851851851851,
+      "annReturn": 0.004840462413668478,
+      "maxDD": 0.03355449517054051,
+      "sharpe": -22.03651413433798,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 45,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5651851851851851,
+      "annReturn": 0.0046285707244997365,
+      "maxDD": 0.03471962369711503,
+      "sharpe": -21.998078996750035,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 50,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5651851851851851,
+      "annReturn": 0.004410810230786558,
+      "maxDD": 0.0356376281373781,
+      "sharpe": -21.988408159251566,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5651851851851851,
+      "annReturn": 0.004071632981239741,
+      "maxDD": 0.03243697031601441,
+      "sharpe": -22.21323338690608,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.005513218608428037,
+      "maxDD": 0.02949695955749017,
+      "sharpe": -22.26317433490709,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 45,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.005370167106291034,
+      "maxDD": 0.030028369154444557,
+      "sharpe": -22.248944930147893,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 50,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.005152406612577855,
+      "maxDD": 0.030946373594707623,
+      "sharpe": -22.239274092649428,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.005042398355434505,
+      "maxDD": 0.031729720086234044,
+      "sharpe": -22.125161683918712,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.0049426773935371815,
+      "maxDD": 0.027877502430366914,
+      "sharpe": -22.437863392807973,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 45,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.004906507431298626,
+      "maxDD": 0.03226069225582933,
+      "sharpe": -22.112556108793267,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 50,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.004688746937585447,
+      "maxDD": 0.0331786966960924,
+      "sharpe": -22.1028852712948,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 10,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 60,
+      "winRate": 0.5629629629629629,
+      "annReturn": 0.004478889803916294,
+      "maxDD": 0.030081144285613946,
+      "sharpe": -22.281734789250425,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 62,
+      "winRate": 0.562010582010582,
+      "annReturn": 0.004347204396258533,
+      "maxDD": 0.035731727240067145,
+      "sharpe": -22.02863678680289,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 45,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 62,
+      "winRate": 0.562010582010582,
+      "annReturn": 0.004135889001019848,
+      "maxDD": 0.03689139020932551,
+      "sharpe": -21.990129746124023,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 50,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 62,
+      "winRate": 0.562010582010582,
+      "annReturn": 0.003926810329420959,
+      "maxDD": 0.03773811107738676,
+      "sharpe": -21.985280742966278,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 62,
+      "winRate": 0.562010582010582,
+      "annReturn": 0.0036181573717561435,
+      "maxDD": 0.03441828950204357,
+      "sharpe": -22.20452035830152,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.0050199605910180925,
+      "maxDD": 0.0316741916270168,
+      "sharpe": -22.255296987372,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 45,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.004876909088881089,
+      "maxDD": 0.03220560122397119,
+      "sharpe": -22.2410675826128,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 50,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.0046678304172822,
+      "maxDD": 0.033052322092032446,
+      "sharpe": -22.23621857945506,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.00454914033802456,
+      "maxDD": 0.03390695215576068,
+      "sharpe": -22.117284336383623,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2.5
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.004489056684373487,
+      "maxDD": 0.029864287173712235,
+      "sharpe": -22.4291674685336,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 45,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.004413249413888681,
+      "maxDD": 0.034437924325355966,
+      "sharpe": -22.104678761258175,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 50,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.004204170742289792,
+      "maxDD": 0.03528464519341722,
+      "sharpe": -22.099829758100434,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 15,
+        "minBullishConfirms": 1,
+        "atrPctThreshold": 2
+      },
+      "totalTrades": 61,
+      "winRate": 0.5597883597883597,
+      "annReturn": 0.0040252690947526,
+      "maxDD": 0.03206792902895926,
+      "sharpe": -22.27303886497605,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 40,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 5,
+        "minBullishConfirms": 2,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 57,
+      "winRate": 0.5574074074074074,
+      "annReturn": 0.004583772610883552,
+      "maxDD": 0.03404159408706972,
+      "sharpe": -22.096136057505355,
+      "instruments": 15
+    },
+    {
+      "params": {
+        "rsiBullThreshold": 35,
+        "smaSlopeThreshold": 0.001,
+        "priceProximityPct": 5,
+        "minBullishConfirms": 2,
+        "atrPctThreshold": 1.5
+      },
+      "totalTrades": 57,
+      "winRate": 0.5574074074074074,
+      "annReturn": 0.004051267386752454,
+      "maxDD": 0.03195765576380677,
+      "sharpe": -22.307231067095575,
+      "instruments": 15
+    }
+  ]
+}

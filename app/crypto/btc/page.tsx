@@ -557,14 +557,16 @@ export default function BtcPage() {
     }
   }, [activeTab, activeRange, fetchCandles, connectKlineWs])
 
-  /** Refresh OHLC on an interval when geo-blocking breaks kline WSS (REST chain still works). */
+  /** Refresh OHLC on an interval when geo-blocking breaks kline WSS (REST chain still works).
+   *  3m uses 30s polling (higher freshness need); all other timeframes use 75s. */
   useEffect(() => {
     if (activeTab !== 'chart') return
+    const pollMs = activeRange === '3m' ? 30_000 : 75_000
     const id = setInterval(() => {
       fetchCandles(activeRangeRef.current)
-    }, 75_000)
+    }, pollMs)
     return () => clearInterval(id)
-  }, [activeTab, fetchCandles])
+  }, [activeTab, activeRange, fetchCandles])
 
   useEffect(() => {
     return () => {
@@ -680,6 +682,12 @@ export default function BtcPage() {
                     <span>{candles.length} candles</span>
                   </div>
                 </div>
+                {activeRange === '1M' && (
+                  <div className="mb-3 rounded-lg border border-yellow-500/30 bg-yellow-950/20 px-3 py-2 text-[11px] text-yellow-200/90">
+                    <span className="font-medium text-yellow-100">Monthly bars</span>
+                    <span className="ml-1 text-yellow-200/75">are synthesized from daily OHLCV data — treat as approximate. True monthly OHLC is not available from this data source.</span>
+                  </div>
+                )}
                 {restFallbackNote && !fetchError && (
                   <div className="mb-3 rounded-lg border border-cyan-500/25 bg-cyan-950/15 px-3 py-2 text-[11px] text-cyan-100/90">
                     <span className="font-medium text-cyan-200/90">REST fallback</span>

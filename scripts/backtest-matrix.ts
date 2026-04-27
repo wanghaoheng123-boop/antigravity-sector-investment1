@@ -38,6 +38,13 @@ interface WindowResult {
     loadedRows: number
     alignedRows: number
   }>
+  integrity: {
+    duplicateTimestamps: number
+    nonMonotonicSteps: number
+    futureBars: number
+    invalidPriceBars: number
+    pass: boolean
+  }
 }
 
 function medianSorted(xs: number[]): number {
@@ -79,14 +86,60 @@ function failedWindow(years: WindowYears, reason: string): WindowResult {
     medianSharpeRatio: null,
     medianSortinoRatio: null,
     historyDiagnostics: [],
+    integrity: {
+      duplicateTimestamps: 0,
+      nonMonotonicSteps: 0,
+      futureBars: 0,
+      invalidPriceBars: 0,
+      pass: false,
+    },
   }
+}
+
+function validateSeriesIntegrity(rows: ReturnType<typeof loadLongHistory>): {
+  duplicateTimestamps: number
+  nonMonotonicSteps: number
+  futureBars: number
+  invalidPriceBars: number
+  pass: boolean
+} {
+  const nowSec = Math.floor(Date.now() / 1000) + 24 * 60 * 60
+  let duplicateTimestamps = 0
+  let nonMonotonicSteps = 0
+  let futureBars = 0
+  let invalidPriceBars = 0
+  let prev = -Infinity
+  const seen = new Set<number>()
+  for (const r of rows) {
+    if (seen.has(r.time)) duplicateTimestamps += 1
+    seen.add(r.time)
+    if (r.time <= prev) nonMonotonicSteps += 1
+    prev = r.time
+    if (r.time > nowSec) futureBars += 1
+    if (!(r.high >= r.low && r.open > 0 && r.close > 0 && r.high > 0 && r.low > 0)) invalidPriceBars += 1
+  }
+  const pass = duplicateTimestamps === 0 && nonMonotonicSteps === 0 && futureBars === 0 && invalidPriceBars === 0
+  return { duplicateTimestamps, nonMonotonicSteps, futureBars, invalidPriceBars, pass }
 }
 
 function runWindow(years: WindowYears): WindowResult {
   const loaded: Record<string, ReturnType<typeof loadLongHistory>> = {}
+  const integrityTotals = {
+    duplicateTimestamps: 0,
+    nonMonotonicSteps: 0,
+    futureBars: 0,
+    invalidPriceBars: 0,
+  }
   for (const ticker of CORE_UNIVERSE) {
     const rows = loadLongHistory(ticker, years)
-    if (rows.length >= 280) loaded[ticker] = rows
+    if (rows.length >= 280) {
+      loaded[ticker] = rows
+      const q = validateSeriesIntegrity(rows)
+      integrityTotals.duplicateTimestamps += q.duplicateTimestamps
+      integrityTotals.nonMonotonicSteps += q.nonMonotonicSteps
+      integrityTotals.futureBars += q.futureBars
+      integrityTotals.invalidPriceBars += q.invalidPriceBars
+    }
   }
   const aligned = alignOhlcvSeries(loaded, { minTradingDays: 280 })
   if (!aligned) {
@@ -122,6 +175,14 @@ function runWindow(years: WindowYears): WindowResult {
     medianSharpeRatio: med.medianSharpeRatio,
     medianSortinoRatio: med.medianSortinoRatio,
     historyDiagnostics,
+    integrity: {
+      ...integrityTotals,
+      pass:
+        integrityTotals.duplicateTimestamps === 0 &&
+        integrityTotals.nonMonotonicSteps === 0 &&
+        integrityTotals.futureBars === 0 &&
+        integrityTotals.invalidPriceBars === 0,
+    },
   }
 }
 

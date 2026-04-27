@@ -12,6 +12,13 @@ interface MatrixWindow {
   maxDrawdown: number
   sharpeRatio: number | null
   sortinoRatio: number | null
+  integrity?: {
+    duplicateTimestamps: number
+    nonMonotonicSteps: number
+    futureBars: number
+    invalidPriceBars: number
+    pass: boolean
+  }
 }
 
 function assertNumber(name: string, value: unknown): number {
@@ -47,13 +54,20 @@ function main() {
     assertNumber(`window.${w.years}.annualizedReturn`, w.annualizedReturn)
     assertNumber(`window.${w.years}.winRate`, w.winRate)
     assertNumber(`window.${w.years}.maxDrawdown`, w.maxDrawdown)
-    return [
+    const baseChecks = [
       { metricId: `A1_${w.years}y_ann_return`, pass: w.annualizedReturn >= t.A1_minAvgAnnReturn, measured: w.annualizedReturn, threshold: t.A1_minAvgAnnReturn },
       { metricId: `A2_${w.years}y_win_rate`, pass: w.winRate >= t.A2_minWinRate, measured: w.winRate, threshold: t.A2_minWinRate },
       { metricId: `B1_${w.years}y_max_dd`, pass: w.maxDrawdown <= t.B1_maxPortfolioDrawdown, measured: w.maxDrawdown, threshold: t.B1_maxPortfolioDrawdown },
       { metricId: `B3_${w.years}y_sharpe`, pass: (w.sharpeRatio ?? -1) >= t.B3_minSharpe, measured: w.sharpeRatio, threshold: t.B3_minSharpe },
       { metricId: `B3_${w.years}y_sortino`, pass: (w.sortinoRatio ?? -1) >= t.B3_minSortino, measured: w.sortinoRatio, threshold: t.B3_minSortino },
       { metricId: `D3_${w.years}y_coverage`, pass: w.instruments >= t.D3_minInstrumentsPerWindow, measured: w.instruments, threshold: t.D3_minInstrumentsPerWindow },
+    ]
+    if (!w.integrity) return baseChecks
+    return [
+      ...baseChecks,
+      { metricId: `Q1_${w.years}y_data_integrity`, pass: w.integrity.pass, measured: w.integrity.pass ? 1 : 0, threshold: 1 },
+      { metricId: `Q1_${w.years}y_no_future_bars`, pass: w.integrity.futureBars === 0, measured: w.integrity.futureBars, threshold: 0 },
+      { metricId: `Q1_${w.years}y_no_nonmonotonic`, pass: w.integrity.nonMonotonicSteps === 0, measured: w.integrity.nonMonotonicSteps, threshold: 0 },
     ]
   })
 

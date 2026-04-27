@@ -1,0 +1,64 @@
+{
+  "cycleId": "autowave_1777124135005_131",
+  "cycleIndex": 131,
+  "startedAt": "2026-04-25T13:35:35.005Z",
+  "endedAt": "2026-04-25T13:35:43.123Z",
+  "elapsedMs": 8118,
+  "goalHours": 5,
+  "missionPass": true,
+  "steps": [
+    {
+      "name": "loop_mission",
+      "command": "npm run loop:mission",
+      "pass": true,
+      "durationMs": 3942,
+      "output": "\n> quantan@0.1.0 loop:mission\n> tsx scripts/loop-mission.ts\n\n"
+    },
+    {
+      "name": "optimize_signals",
+      "command": "npm run optimize:signals",
+      "pass": true,
+      "durationMs": 4166,
+      "output": "\n> quantan@0.1.0 optimize:signals\n> tsx scripts/optimize-signal-params.ts\n\n",
+      "artifact": "G:\\My Drive\\QUANTAN-sector-investment\\artifacts\\signal-param-optimization.json",
+      "artifactExists": true
+    }
+  ],
+  "experts": [
+    {
+      "role": "quant_reviewer",
+      "score": 50,
+      "finding": "Minimum window Sharpe=-6.26, minimum window win-rate=50.9%.",
+      "recommendation": "Prioritize parameter re-optimization and run walk-forward stress checks before changing production defaults."
+    },
+    {
+      "role": "risk_auditor",
+      "score": 35,
+      "finding": "Scorecard has 13 failed checks.",
+      "recommendation": "Fix failed checks first: A1_10y_ann_return, B3_10y_sharpe, B3_10y_sortino, A1_15y_ann_return, B3_15y_sharpe ...."
+    },
+    {
+      "role": "pm_critic",
+      "score": 55,
+      "finding": "Strict-qualified opportunities=0.",
+      "recommendation": "Improve ranking stability and explainability before expanding UI claims."
+    },
+    {
+      "role": "performance_optimizer",
+      "score": 75,
+      "finding": "Best tuned config win-rate=56.9%, Sharpe=-22.07.",
+      "recommendation": "Persist top parameter set as candidate preset and validate in fresh holdout window."
+    },
+    {
+      "role": "safety_guard",
+      "score": 90,
+      "finding": "No invalid numeric values detected in key artifacts.",
+      "recommendation": "Keep hard promotion gate on scorecard pass + finite-metric checks."
+    }
+  ],
+  "nextActions": [
+    "[quant_reviewer] Prioritize parameter re-optimization and run walk-forward stress checks before changing production defaults.",
+    "[risk_auditor] Fix failed checks first: A1_10y_ann_return, B3_10y_sharpe, B3_10y_sortino, A1_15y_ann_return, B3_15y_sharpe ....",
+    "[pm_critic] Improve ranking stability and explainability before expanding UI claims."
+  ]
+}

@@ -1,0 +1,390 @@
+{
+  "runAt": "2026-04-24T07:10:57.279Z",
+  "grid": {
+    "adxThreshold": [
+      0,
+      15,
+      20,
+      25
+    ],
+    "stochRsiOversold": [
+      0.2,
+      0.3,
+      0.4
+    ],
+    "rvolThreshold": [
+      0,
+      0.8,
+      1.2
+    ],
+    "enableHealthyBullDip": [
+      true,
+      false
+    ]
+  },
+  "fixtures": [
+    {
+      "ticker": "SYN_BULL",
+      "sector": "Tech",
+      "trendBps": 8,
+      "volPct": 1.2
+    },
+    {
+      "ticker": "SYN_CHOP",
+      "sector": "Financials",
+      "trendBps": 2,
+      "volPct": 1.8
+    },
+    {
+      "ticker": "SYN_VOLBULL",
+      "sector": "Energy",
+      "trendBps": 6,
+      "volPct": 2.5
+    },
+    {
+      "ticker": "SYN_WEAK",
+      "sector": "Utilities",
+      "trendBps": -1,
+      "volPct": 1
+    }
+  ],
+  "splitRatio": {
+    "inSample": 0.6,
+    "outOfSample": 0.4
+  },
+  "scoring": "score = OOS_Sharpe − 0.3 × max(0, IS_Sharpe − OOS_Sharpe)",
+  "baseline": {
+    "params": "DEFAULT_CONFIG",
+    "out": {
+      "isSharpe": 1.9157823786304935,
+      "oosSharpe": 1.5161342089099532,
+      "isRet": -0.00027898560668283606,
+      "oosRet": -0.00012324834785657003,
+      "isTrades": 4,
+      "oosTrades": 2,
+      "isWin": 0,
+      "oosWin": 0,
+      "maxDD": 0.00027948431742814137
+    }
+  },
+  "totalCandidates": 72,
+  "top10": [
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.3,
+        "rvolThreshold": 0,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.3,
+        "rvolThreshold": 0,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.3,
+        "rvolThreshold": 0.8,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.3,
+        "rvolThreshold": 0.8,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.3,
+        "rvolThreshold": 1.2,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.3,
+        "rvolThreshold": 1.2,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.4,
+        "rvolThreshold": 0,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.4,
+        "rvolThreshold": 0,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.4,
+        "rvolThreshold": 0.8,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    },
+    {
+      "params": {
+        "adxThreshold": 15,
+        "stochRsiOversold": 0.4,
+        "rvolThreshold": 0.8,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.9157823786304935,
+        "oosSharpe": 1.5161342089099532,
+        "isRet": -0.00027898560668283606,
+        "oosRet": -0.00012324834785657003,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.00027948431742814137
+      },
+      "score": 1.396239757993791,
+      "overfitting": 0.3996481697205403
+    }
+  ],
+  "bottom5": [
+    {
+      "params": {
+        "adxThreshold": 0,
+        "stochRsiOversold": 0.2,
+        "rvolThreshold": 0,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.8733797841640036,
+        "oosSharpe": 1.3200715438745423,
+        "isRet": -0.0002872822916317091,
+        "oosRet": -0.00015214015593082876,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.0003049681147665251
+      },
+      "score": 1.1540790717877039,
+      "overfitting": 0.5533082402894614
+    },
+    {
+      "params": {
+        "adxThreshold": 0,
+        "stochRsiOversold": 0.2,
+        "rvolThreshold": 0.8,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.8733797841640036,
+        "oosSharpe": 1.3200715438745423,
+        "isRet": -0.0002872822916317091,
+        "oosRet": -0.00015214015593082876,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.0003049681147665251
+      },
+      "score": 1.1540790717877039,
+      "overfitting": 0.5533082402894614
+    },
+    {
+      "params": {
+        "adxThreshold": 0,
+        "stochRsiOversold": 0.2,
+        "rvolThreshold": 0.8,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.8733797841640036,
+        "oosSharpe": 1.3200715438745423,
+        "isRet": -0.0002872822916317091,
+        "oosRet": -0.00015214015593082876,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.0003049681147665251
+      },
+      "score": 1.1540790717877039,
+      "overfitting": 0.5533082402894614
+    },
+    {
+      "params": {
+        "adxThreshold": 0,
+        "stochRsiOversold": 0.2,
+        "rvolThreshold": 1.2,
+        "enableHealthyBullDip": true
+      },
+      "out": {
+        "isSharpe": 1.8733797841640036,
+        "oosSharpe": 1.3200715438745423,
+        "isRet": -0.0002872822916317091,
+        "oosRet": -0.00015214015593082876,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.0003049681147665251
+      },
+      "score": 1.1540790717877039,
+      "overfitting": 0.5533082402894614
+    },
+    {
+      "params": {
+        "adxThreshold": 0,
+        "stochRsiOversold": 0.2,
+        "rvolThreshold": 1.2,
+        "enableHealthyBullDip": false
+      },
+      "out": {
+        "isSharpe": 1.8733797841640036,
+        "oosSharpe": 1.3200715438745423,
+        "isRet": -0.0002872822916317091,
+        "oosRet": -0.00015214015593082876,
+        "isTrades": 4,
+        "oosTrades": 2,
+        "isWin": 0,
+        "oosWin": 0,
+        "maxDD": 0.0003049681147665251
+      },
+      "score": 1.1540790717877039,
+      "overfitting": 0.5533082402894614
+    }
+  ]
+}

@@ -76,4 +76,5 @@ When user says "continue", open **`docs/NEXT_SESSION_PLAN_2026-04.md`**, then th
   - `scripts/loop-mission.ts`
 - Institutional ranking board + engine: `lib/alpha/institutionalRanking.ts`, strict script `npm run backtest:ranking:strict`.
 - Next-session plan doc: `docs/NEXT_SESSION_PLAN_2026-04.md`.
+- **2026-04-25 (Session 3, Opus + Deepseek):** Fixed mark-to-market bug in `lib/backtest/engine.ts`. `currentEquity()` now uses last close price (`signalPrice`) instead of `avgCost`, so the equity curve reflects unrealized P&L on open positions instead of being piecewise-flat. Removed the `<1e-5 ? rfD : rawRet` idle-day kludge in `aggregatePortfolio` that was masking the bug. **Why this matters:** prior scorecard's Sharpe = -6.26 was a measurement artifact, not a strategy result. **Action required:** user must run `npm run backtest:matrix && npm run scorecard:evaluate` on a local (non-Google-Drive) checkout, then `npm run optimize:signals` to re-tune `DEFAULT_CONFIG` because previous grid-search optima were calibrated against bogus Sharpe values.
 

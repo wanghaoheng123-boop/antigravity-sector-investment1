@@ -34,6 +34,7 @@ import type { OptionsIncomeLeg } from '@/lib/options/income/types'
 import { buildRunAudit, newTraceId, configHashFromObject, logRunEvent } from '@/lib/infra/runAudit'
 import { clientKeyFromRequest, rateLimitHit } from '@/lib/infra/rateLimit'
 import { buildInstitutionalRanking } from '@/lib/alpha/institutionalRanking'
+import { kellyFraction, halfKelly } from '@/lib/quant/kelly'
 
 // ─── Request / Response types ──────────────────────────────────────────────────
 
@@ -635,21 +636,22 @@ function getKellyFraction(
     return Math.min(maxKelly, positionCfg.fixedPositionSize)
   }
 
-  let kelly = 0.10 // default base
+  // Map signal confidence (0–1) to estimated win probability (0.45–0.72).
+  // Implied payoff ratio b = avgWin / avgLoss ≈ 1.5 (conservative institutional assumption).
+  const winProb = 0.45 + confidence * 0.27   // 0.45 at no-edge, 0.72 at max confidence
+  const impliedB = 1.5
 
-  const sortedScales = [...positionCfg.confidenceScales].sort(
-    (a, b) => b.confidenceThreshold - a.confidenceThreshold,
-  )
-  for (const scale of sortedScales) {
-    if (confidence >= scale.confidenceThreshold) {
-      kelly = scale.kellyFraction
-    }
+  let kelly: number
+  if (positionCfg.kellyMode === 'half') {
+    kelly = halfKelly(winProb, impliedB, 1) ?? 0.05
+  } else if (positionCfg.kellyMode === 'quarter') {
+    const f = kellyFraction(winProb, impliedB, 1) ?? 0.05
+    kelly = Math.max(0, f / 4)
+  } else {
+    kelly = kellyFraction(winProb, impliedB, 1) ?? 0.05
   }
 
-  if (positionCfg.kellyMode === 'half') kelly *= 0.5
-  else if (positionCfg.kellyMode === 'quarter') kelly *= 0.25
-
-  return Math.min(maxKelly, kelly)
+  return Math.min(maxKelly, Math.max(0, kelly))
 }
 
 // ─── Simulator backtest engine ────────────────────────────────────────────────
@@ -1242,6 +1244,8 @@ export async function POST(request: Request) {
   const optionsFeaturesByTicker: Record<string, Record<string, number | string | null>> = {}
   const entryExitZonesByTicker: Record<string, EntryExitZonesPayload> = {}
   const paperIncomePreview: Record<string, { pnl: string; detail: string }> = {}
+  // C2: last-bar technical indicators derived from OHLCV; merged into liveQuotes for timing pillar
+  const ohlcvIndicators: Record<string, { rsi14: number | null; macdHist: number | null; atrPct: number | null; deviationPct: number | null }> = {}
 
   const useOptionsFilter = config.optionsFilter?.useOptionsFilter ?? false
   const includeFeatures = includeOptionsFeatures === true
@@ -1305,6 +1309,23 @@ export async function POST(request: Request) {
         callWallStrike: optionsMetrics?.callWallStrike ?? null,
       })
 
+      // C2: capture last-bar indicators for timing pillar in institutional ranking
+      {
+        const rsiSeries = rsi(closes, config.confirmations?.rsiPeriod ?? 14)
+        const lastRsi = rsiSeries[rsiSeries.length - 1]
+        const macdResult = macdFn(closes, config.confirmations?.macdFast ?? 12, config.confirmations?.macdSlow ?? 26, config.confirmations?.macdSignal ?? 9)
+        const lastMacdHist = macdResult.histogram[macdResult.histogram.length - 1]
+        const smaDev = regimeSmaVal != null && lastClose > 0 && regimeSmaVal > 0
+          ? ((lastClose - regimeSmaVal) / regimeSmaVal) * 100
+          : null
+        ohlcvIndicators[ticker] = {
+          rsi14: Number.isFinite(lastRsi) ? lastRsi : null,
+          macdHist: Number.isFinite(lastMacdHist) ? lastMacdHist : null,
+          atrPct: atrPct != null ? atrPct : null,
+          deviationPct: smaDev,
+        }
+      }
+
       if (useOptionsFilter && optionsMetrics) {
         paperAdvisory[ticker] = {
           csp:
@@ -1340,6 +1361,16 @@ export async function POST(request: Request) {
   const quoteResults = await fetchWithRateLimit(tickersWithData, t => fetchLiveQuote(t))
   for (const { ticker, result: quote } of quoteResults) {
     if (quote) liveQuotes[ticker] = quote
+  }
+  // C2: backfill OHLCV-derived indicators into liveQuotes (null-safe; prefer live if already set)
+  for (const [ticker, ind] of Object.entries(ohlcvIndicators)) {
+    const q = liveQuotes[ticker]
+    if (q) {
+      if (q.rsi14 == null && ind.rsi14 != null) q.rsi14 = ind.rsi14
+      if (q.macdHist == null && ind.macdHist != null) q.macdHist = ind.macdHist
+      if (q.atrPct == null && ind.atrPct != null) q.atrPct = ind.atrPct
+      if (q.deviationPct == null && ind.deviationPct != null) q.deviationPct = ind.deviationPct
+    }
   }
   const rankingBoard = buildInstitutionalRanking(
     results.map((result) => ({

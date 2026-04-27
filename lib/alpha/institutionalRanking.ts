@@ -90,7 +90,7 @@ export function buildInstitutionalRanking(inputs: InstitutionalRankingInput[]): 
     const riskControlScore = clamp01(
       0.55 * (1 - scaleRange(result.maxDrawdown, 0.08, 0.5)) +
       0.2 * scaleRange(result.winRate, 0.35, 0.75) +
-      0.25 * scaleRange(result.profitFactor === Infinity ? 3 : result.profitFactor, 0.8, 2.5),
+      0.25 * scaleRange(result.profitFactor === Infinity ? 2.5 : result.profitFactor, 0.8, 2.5),
     )
 
     const hasWalkForward = walkForward != null && walkForward.windows.length > 0

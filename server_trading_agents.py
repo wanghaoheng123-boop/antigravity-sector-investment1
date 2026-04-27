@@ -15,9 +15,9 @@ Endpoints:
 POST /analyze body (all fields optional):
 {
     "trade_date":       "2024-05-10",   ← date for analysis (default: today)
-    "llm_provider":     "openai",        ← openai | google | anthropic | xai | openrouter | ollama
-    "deep_think_llm":   "gpt-4o",       ← model for deep reasoning
-    "quick_think_llm":  "gpt-4o-mini",  ← model for quick tasks
+    "llm_provider":     "deepseek",      ← deepseek | openai | google | anthropic | xai | openrouter | ollama
+    "deep_think_llm":   "deepseek-v4-pro",   ← model for deep reasoning
+    "quick_think_llm":  "deepseek-chat",     ← model for quick tasks
     "max_debate_rounds": 1,             ← bull/bear debate rounds
     "max_risk_discuss_rounds": 1,       ← risk debate rounds
     "data_vendor":      "yfinance",      ← yfinance | alpha_vantage (needs API key)
@@ -76,6 +76,7 @@ def get_request_api_key() -> str | None:
 # ─────────────────────────────────────────────
 
 _PROVIDER_API_KEY_ENV = {
+    "deepseek":   "DEEPSEEK_API_KEY",
     "openai":     "OPENAI_API_KEY",
     "google":     "GOOGLE_API_KEY",
     "anthropic":  "ANTHROPIC_API_KEY",
@@ -234,9 +235,9 @@ def _run_analysis(
 ) -> AnalysisResult:
     config = DEFAULT_CONFIG.copy()
 
-    provider    = req.llm_provider        or os.environ.get("TA_LLM_PROVIDER", "openai")
-    deep_model  = req.deep_think_llm      or os.environ.get("TA_DEEP_MODEL", "gpt-4o")
-    quick_model = req.quick_think_llm     or os.environ.get("TA_QUICK_MODEL", "gpt-4o-mini")
+    provider    = req.llm_provider        or os.environ.get("TA_LLM_PROVIDER", "deepseek")
+    deep_model  = req.deep_think_llm      or os.environ.get("TA_DEEP_MODEL", "deepseek-v4-pro")
+    quick_model = req.quick_think_llm     or os.environ.get("TA_QUICK_MODEL", "deepseek-chat")
 
     config.update({
         "llm_provider":   provider,
@@ -334,7 +335,7 @@ async def analyze(ticker: str, req: AnalyzeRequest = AnalyzeRequest()):
         raise HTTPException(400, f"trade_date must be YYYY-MM-DD, got: {trade_date_str}")
 
     # Validate provider
-    supported = ("openai", "google", "anthropic", "xai", "openrouter", "ollama")
+    supported = ("deepseek", "openai", "google", "anthropic", "xai", "openrouter", "ollama")
     if req.llm_provider and req.llm_provider not in supported:
         raise HTTPException(400, f"llm_provider must be one of: {', '.join(supported)}")
 

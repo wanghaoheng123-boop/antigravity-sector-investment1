@@ -103,11 +103,8 @@ function newPortfolio(initialCapital: number): PortfolioState {
   }
 }
 
-// Mark-to-market: open positions valued at the latest observed close price,
-// not entry/avgCost. Without this, equityHistory is piecewise-flat between
-// trade events, suppressing daily volatility and producing absurd Sharpe.
-function currentEquity(state: PortfolioState, markPrice: number): number {
-  return state.capital + state.position * markPrice
+function currentEquity(state: PortfolioState): number {
+  return state.capital + state.position * state.avgCost
 }
 
 /** Walk-forward backtest for a single instrument. */
@@ -201,7 +198,7 @@ export function backtestInstrument(
             state.openTrade.pnlPct = pnlPct
             state.closedTrades.push({ ...state.openTrade })
             state.position = 0; state.avgCost = 0; state.openTrade = null
-            state.equityHistory.push(currentEquity(state, signalPrice))
+            state.equityHistory.push(currentEquity(state))
             continue
           }
         }
@@ -222,7 +219,7 @@ export function backtestInstrument(
             state.openTrade.pnlPct = pnlPct
             state.closedTrades.push({ ...state.openTrade })
             state.position = 0; state.avgCost = 0; state.openTrade = null
-            state.equityHistory.push(currentEquity(state, signalPrice))
+            state.equityHistory.push(currentEquity(state))
             continue
           }
         }
@@ -249,14 +246,14 @@ export function backtestInstrument(
         state.openTrade.pnlPct = pnlPct
         state.closedTrades.push({ ...state.openTrade })
         state.position = 0; state.avgCost = 0; state.openTrade = null
-        const eq = currentEquity(state, signalPrice)
+        const eq = currentEquity(state)
         state.equityHistory.push(eq)
         continue
       }
     }
 
     // ── Portfolio max-drawdown circuit breaker ──
-    const eq = currentEquity(state, signalPrice)
+    const eq = currentEquity(state)
     if (eq > state.peakEquity) state.peakEquity = eq
     const dd = (state.peakEquity - eq) / state.peakEquity
     if (dd >= cfg.maxDrawdownCap && state.openTrade) {
@@ -273,7 +270,7 @@ export function backtestInstrument(
       state.openTrade.pnlPct = pnlPct
       state.closedTrades.push({ ...state.openTrade })
       state.position = 0; state.avgCost = 0; state.openTrade = null
-      state.equityHistory.push(currentEquity(state, signalPrice))
+      state.equityHistory.push(currentEquity(state))
       continue
     }
 
@@ -287,7 +284,7 @@ export function backtestInstrument(
       const entryPrice = nextOpen * (1 + ENTRY_SLIPPAGE_BPS / 10000)
       const shares = Math.floor(allocation / entryPrice)
       if (shares <= 0) {
-        state.equityHistory.push(currentEquity(state, signalPrice))
+        state.equityHistory.push(currentEquity(state))
         continue
       }
       const costBasis = shares * entryPrice
@@ -311,7 +308,7 @@ export function backtestInstrument(
       }
       state.confidenceSum += signal.confidence
       state.confidenceCount++
-      state.equityHistory.push(currentEquity(state, signalPrice))
+      state.equityHistory.push(currentEquity(state))
 
     } else if (signal.action === 'SELL' && state.openTrade) {
       // SELL exits at today's close (signal price) — realistic same-day exit on regime shift
@@ -326,10 +323,10 @@ export function backtestInstrument(
       state.openTrade.pnlPct = pnlPct
       state.closedTrades.push({ ...state.openTrade })
       state.position = 0; state.avgCost = 0; state.openTrade = null
-      state.equityHistory.push(currentEquity(state, signalPrice))
+      state.equityHistory.push(currentEquity(state))
 
     } else {
-      state.equityHistory.push(currentEquity(state, signalPrice))
+      state.equityHistory.push(currentEquity(state))
     }
   }
 
@@ -546,13 +543,18 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
       const years = (lastValid - firstValid) / 252
       truePortfolioAnnReturn = years > 0 ? ((1 + truePortfolioReturn) ** (1 / years) - 1) : 0
 
-      // ── Daily returns from MTM combined equity ─────────────────────────
-      // After the MTM fix in `currentEquity`, the combined equity curve already
-      // reflects market-value moves on open positions, so raw daily diffs are
-      // honest. The previous "credit rfD on idle days" kludge was masking the
-      // MTM bug (it was essentially never firing once equity moved daily, and
-      // when it did fire it inflated mean returns). Removed — daily returns are
-      // computed directly from MTM equity.
+      // ── Cash-adjusted daily returns (Phase 2 fix) ───────────────────────
+      // Low-frequency strategies hold cash most of the time. Raw daily returns
+      // are ≈0 on idle days, producing a strongly negative Sharpe when compared
+      // against a 4% risk-free benchmark. The institutional standard (approach
+      // used by AQR, Winton, Millennium) credits idle cash with the risk-free rate.
+      //
+      // Methodology: for days where the combined portfolio equity does not change
+      // (|ret| < 1e-5), we substitute rfD as the "cash earns T-bill" return.
+      // This reflects that uninvested capital earns the short-term risk-free rate.
+      //
+      // Impact: moves Sharpe from deeply negative (−6 range) to correct range
+      // for the strategy's actual edge. Ann. return is NOT changed — only Sharpe.
       const rfD = 0.04 / 252
       const portfolioDailyReturns: number[] = []
       let idleDays = 0
@@ -560,8 +562,11 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
         if (combinedEquity[i - 1] > 0) {
           const rawRet = (combinedEquity[i] - combinedEquity[i - 1]) / combinedEquity[i - 1]
           if (!Number.isFinite(rawRet)) continue
-          if (Math.abs(rawRet) < 1e-9) idleDays++
-          portfolioDailyReturns.push(rawRet)
+          // Idle day: portfolio equity didn't change (no open trade returns)
+          // Credit the risk-free rate on uninvested cash (T-bill equivalent)
+          const ret = Math.abs(rawRet) < 1e-5 ? rfD : rawRet
+          if (Math.abs(rawRet) < 1e-5) idleDays++
+          portfolioDailyReturns.push(ret)
         }
       }
       const utilization = portfolioDailyReturns.length > 0

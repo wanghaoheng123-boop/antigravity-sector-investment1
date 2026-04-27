@@ -17,6 +17,7 @@ export function riskParityStep(weights: number[], vols: number[]): number[] {
   const avg = risk.reduce((a, b) => a + b, 0) / n
   const adj = weights.map((w, i) => {
     const ri = risk[i] ?? 0
+    // Guard: near-zero risk (no vol) would cause NaN in avg/ri; treat as equal-weight
     if (ri < 1e-12) return w
     return w * (avg / ri)
   })

@@ -9,6 +9,7 @@
 # ─── API KEYS ────────────────────────────────────────────────────────────────
 # At least ONE of these is required to run LLM analysis:
 #
+#   DEEPSEEK_API_KEY     → https://platform.deepseek.com/api_keys
 #   OPENAI_API_KEY       → https://platform.openai.com/api-keys
 #   ANTHROPIC_API_KEY    → https://console.anthropic.com/
 #   GOOGLE_API_KEY       → https://aistudio.google.com/app/apikey
@@ -20,7 +21,7 @@
 #
 # ─── 1. Set keys in this session ──────────────────────────────────────────
 # Replace the value below with your actual key:
-$env:OPENAI_API_KEY = "sk-your-key-here"
+$env:DEEPSEEK_API_KEY = "your-deepseek-key-here"
 
 # ─── 2. Start the TradingAgents FastAPI server ─────────────────────────────
 $TA_PYTHON = "C:\Users\wang haoheng\AppData\Local\Temp\ta-venv\Scripts\python.exe"

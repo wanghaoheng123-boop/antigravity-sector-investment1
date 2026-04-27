@@ -263,6 +263,40 @@ export async function GET(req: NextRequest) {
     )
   }
 
+  // ── 1w: prefer Kraken native weekly (interval=10080) — CoinGecko returns daily bars ──
+  if (binanceInterval === '1w') {
+    const krW = await fetchKrakenOhlc('1w', limit)
+    if (krW?.length) {
+      return NextResponse.json(
+        {
+          symbol: SYMBOL,
+          interval: '1w',
+          candles: krW,
+          source: 'Kraken Public API (native weekly OHLC)',
+        },
+        { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
+      )
+    }
+    // Kraken unavailable — fall through to CoinGecko with a note
+    const cgW = await fetchCoinGeckoOhlc('1w', limit)
+    if (cgW?.length) {
+      return NextResponse.json(
+        {
+          symbol: SYMBOL,
+          interval: '1w',
+          candles: cgW,
+          source: 'CoinGecko (coarse fallback)',
+          note: 'Kraken weekly bars unavailable. CoinGecko OHLC uses daily granularity — bars are not true ISO-week OHLC.',
+        },
+        { headers: { 'Cache-Control': 'no-store', 'CDN-Cache-Control': 'no-store' } }
+      )
+    }
+    return NextResponse.json(
+      { error: 'btc_data_unavailable', userMessage: 'Weekly BTC OHLC could not be loaded. Try again.' },
+      { status: 503 }
+    )
+  }
+
   // ── Primary: CoinGecko (globally accessible, no geo-blocking) ───────────────
   const cg = await fetchCoinGeckoOhlc(binanceInterval, limit)
   if (cg?.length) {

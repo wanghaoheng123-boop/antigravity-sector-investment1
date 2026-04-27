@@ -9,6 +9,7 @@ import StrategyBuilder from '@/components/simulator/StrategyBuilder'
 import EquityCurveChart from '@/components/backtest/EquityCurveChart'
 import InstrumentTable from '@/components/backtest/InstrumentTable'
 import TradeLog from '@/components/backtest/TradeLog'
+import { SkeletonCard, SkeletonTable } from '@/components/ui/Skeleton'
 import ContextualAnalyticsZone from '@/components/zones/ContextualAnalyticsZone'
 import InstitutionalRankingBoard from '@/components/zones/InstitutionalRankingBoard'
 import type { BacktestResult, WalkForwardSummary } from '@/lib/backtest/engine'
@@ -167,11 +168,22 @@ function fmtRatio(v: number | null): string {
 // ─── Metric Card ──────────────────────────────────────────────────────────────
 
 function MetricCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color?: string }) {
+  // Professional metric card: left accent rail, tighter tabular numerics,
+  // subtle hover lift, semantic color via `color` prop.
+  const accent =
+    color?.includes('emerald') || color?.includes('green') ? 'bg-emerald-500/60' :
+    color?.includes('rose') || color?.includes('red')      ? 'bg-rose-500/60' :
+    color?.includes('amber') || color?.includes('yellow')  ? 'bg-amber-500/60' :
+    color?.includes('blue') || color?.includes('sky')      ? 'bg-sky-500/60' :
+                                                             'bg-slate-600/60'
   return (
-    <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-800 text-center">
-      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">{label}</div>
-      <div className={`text-lg font-bold font-mono ${color ?? 'text-white'}`}>{value}</div>
-      {sub && <div className="text-[10px] text-slate-600 mt-0.5">{sub}</div>}
+    <div className="group relative bg-slate-900/60 rounded-lg p-3 border border-slate-800/80 hover:border-slate-700 hover:bg-slate-900/80 transition-colors overflow-hidden">
+      <div className={`absolute left-0 top-0 bottom-0 w-0.5 ${accent}`} aria-hidden="true" />
+      <div className="text-[10px] text-slate-500 uppercase tracking-wider font-medium mb-1 pl-1.5">{label}</div>
+      <div className={`text-xl font-semibold font-mono tabular-nums tracking-tight pl-1.5 ${color ?? 'text-white'}`}>
+        {value}
+      </div>
+      {sub && <div className="text-[10px] text-slate-500 mt-1 pl-1.5 truncate">{sub}</div>}
     </div>
   )
 }
@@ -845,6 +857,39 @@ function SimulatorPageContent() {
                     )}
                   </div>
                 )}
+                {/* Phase E1: Top-3 optimizer report */}
+                {((): JSX.Element | null => {
+                  const report = (commandWfOpt?.report ?? commandFullOpt?.report) as { objective: string; totalCandidates: number; topConfigs: Array<{ rank: number; params: Record<string, number>; primaryScore: number; oosReturn?: number; overfittingIndex?: number; calmar?: number; sharpe?: number | null }> } | undefined
+                  if (!report?.topConfigs?.length) return null
+                  const isWf = report.objective === 'walk_forward'
+                  return (
+                    <div className="mt-3 border border-cyan-500/20 rounded-xl p-3 bg-cyan-950/10">
+                      <div className="text-[10px] text-cyan-400 uppercase font-semibold mb-2">
+                        Top {report.topConfigs.length} Configs — {isWf ? 'Walk-Forward OOS' : 'Calmar'} · {report.totalCandidates} candidates tested
+                      </div>
+                      <div className="space-y-1.5">
+                        {report.topConfigs.map(cfg => (
+                          <div key={cfg.rank} className="flex items-start gap-2 text-[10px] font-mono">
+                            <span className="text-cyan-500 w-4 shrink-0">#{cfg.rank}</span>
+                            <span className="text-slate-300">
+                              {Object.entries(cfg.params).map(([k, v]) => `${k.split('.').pop()}=${v}`).join(' · ')}
+                            </span>
+                            <span className="ml-auto text-green-400 shrink-0">
+                              {isWf
+                                ? `OOS ${((cfg.oosReturn ?? 0) * 100).toFixed(1)}%`
+                                : `Calmar ${(cfg.calmar ?? 0).toFixed(2)}`}
+                            </span>
+                            {isWf && cfg.overfittingIndex != null && (
+                              <span className={`shrink-0 ${cfg.overfittingIndex < 0.4 ? 'text-green-400' : 'text-yellow-400'}`}>
+                                OI {cfg.overfittingIndex.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )
+                })()}
               </div>
             )}
 
@@ -896,8 +941,20 @@ function SimulatorPageContent() {
           </div>
         )}
 
+        {/* ── Backtest loading skeleton ── */}
+        {mode === 'backtest' && backtestLoading && (
+          <div className="mt-8 space-y-6 animate-pulse-subtle">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <SkeletonCard key={i} lines={2} showHeader={false} className="h-20" />
+              ))}
+            </div>
+            <SkeletonTable rows={8} cols={9} />
+          </div>
+        )}
+
         {/* ── Historical Backtest Results ── */}
-        {mode === 'backtest' && backtestData && (
+        {mode === 'backtest' && !backtestLoading && backtestData && (
           <div className="mt-8 space-y-6">
             {/* Key metrics strip */}
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -914,10 +971,10 @@ function SimulatorPageContent() {
                 color={backtestData.portfolio.alpha > 0 ? 'text-cyan-400' : 'text-orange-400'}
               />
               <MetricCard
-                label="Sharpe Ratio"
+                label="Return/MaxDD"
                 value={fmtRatio(backtestData.portfolio.avgAnnReturn > 0 && backtestData.portfolio.maxPortfolioDd > 0
                   ? backtestData.portfolio.avgAnnReturn / backtestData.portfolio.maxPortfolioDd : null)}
-                sub="Risk-adj return"
+                sub="Ann.Return / MaxDD"
                 color={backtestData.portfolio.alpha > 0 ? 'text-cyan-400' : 'text-slate-400'}
               />
               <MetricCard

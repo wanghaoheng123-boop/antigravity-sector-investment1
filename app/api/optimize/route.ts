@@ -11,6 +11,23 @@ import { executeBoundedOptimize } from '@/lib/optimize/executeOptimize'
 import { buildRunAudit, newTraceId, configHashFromObject, logRunEvent } from '@/lib/infra/runAudit'
 import { clientKeyFromRequest, rateLimitHit } from '@/lib/infra/rateLimit'
 
+/** Phase E1: write optimizer report artifact to disk (best-effort; skipped in serverless). */
+function tryWriteOptimizerArtifact(ticker: string, report: unknown): void {
+  try {
+    // Dynamic import to avoid crashing in Edge runtime or environments without fs
+    const { writeFileSync, mkdirSync } = require('node:fs') as typeof import('node:fs')
+    const { join } = require('node:path') as typeof import('node:path')
+    const outDir = join(process.cwd(), 'artifacts')
+    mkdirSync(outDir, { recursive: true })
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+    const outPath = join(outDir, `optimizer-report-${ticker.toLowerCase()}-${ts}.json`)
+    writeFileSync(outPath, JSON.stringify(report, null, 2), 'utf-8')
+    console.info(`[api/optimize] wrote artifact ${outPath}`)
+  } catch {
+    // Silently skip in serverless/edge environments
+  }
+}
+
 const ALLOWED_PATHS = new Set([
   'regime.smaPeriod',
   'confirmations.rsiBullThreshold',
@@ -94,6 +111,9 @@ export async function POST(request: Request) {
     })
 
     logRunEvent('info', 'optimize_complete', { traceId, iterationsRun: out.iterationsRun, runId: traceId })
+
+    // Phase E1: emit artifact for local dev / CI (no-op in Vercel serverless)
+    if (out.report) tryWriteOptimizerArtifact(ticker, out.report)
 
     return NextResponse.json({
       ...out,
