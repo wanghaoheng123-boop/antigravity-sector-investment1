@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import Link from 'next/link'
+import { quantanFeedbackHref } from '@/lib/infra/feedbackUrl'
 import {
   BtcCandle,
   calcRSI,
@@ -15,7 +17,7 @@ import {
   getRainbowBand,
 } from '@/lib/crypto'
 import { ma200Regime, sma200DeviationPct } from '@/lib/quant/technicals'
-import { apiUrl } from '@/lib/apiBase'
+import { apiUrl } from '@/lib/infra/apiBase'
 
 interface Props { candles: BtcCandle[] }
 
@@ -144,22 +146,32 @@ export default function BtcQuantLab({ candles }: Props) {
     void fetchLiq()
   }, [fetchMetrics, fetchLiq])
 
-  // Poll metrics every 30 seconds
+  // Poll metrics every 30 seconds — restart when candles changes (ticker switch)
   useEffect(() => {
     const id = setInterval(() => { void fetchMetrics() }, 30_000)
     return () => clearInterval(id)
-  }, [fetchMetrics])
+  }, [fetchMetrics, candles])
 
-  // Poll liquidations every 60 seconds
+  // Poll liquidations every 60 seconds — restart when candles changes (ticker switch)
   useEffect(() => {
     const id = setInterval(() => { void fetchLiq() }, 60_000)
     return () => clearInterval(id)
-  }, [fetchLiq])
+  }, [fetchLiq, candles])
 
   const closes = candles.map(c => c.close)
   const latestClose = closes[closes.length - 1] ?? 0
-  const high20 = closes.length >= 20 ? Math.max(...closes.slice(-20)) : latestClose
-  const low20 = closes.length >= 20 ? Math.min(...closes.slice(-20)) : latestClose
+
+  // Guard: if candles is empty or price is invalid, show "No data" state rather than NaN cascade
+  const hasCandles = closes.length > 0 && latestClose > 0 && Number.isFinite(latestClose)
+
+  // Guard: Math.max/min with spread on a large array can cause RangeError (call stack overflow).
+  // Use reduce-based approach for any array size — still O(n) but no stack overflow risk.
+  const high20 = hasCandles && closes.length >= 20
+    ? closes.slice(-20).reduce((mx, v) => (v > mx ? v : mx), -Infinity)
+    : latestClose
+  const low20 = hasCandles && closes.length >= 20
+    ? closes.slice(-20).reduce((mn, v) => (v < mn ? v : mn), Infinity)
+    : latestClose
 
   const rsiValues = calcRSI(closes)
   const latestRSI = rsiValues.length > 0 ? rsiValues[rsiValues.length - 1] : NaN
@@ -171,7 +183,7 @@ export default function BtcQuantLab({ candles }: Props) {
   const latestEMA50 = ema50.length > 0 ? ema50[ema50.length - 1] : NaN
   const rsiOk = Number.isFinite(latestRSI)
   const macdHist = latestMACD.histogram
-  const macdOk = Number.isFinite(macdHist ?? NaN)
+  const macdOk = Number.isFinite(macdHist)
   const emaOk = Number.isFinite(latestEMA20) && Number.isFinite(latestEMA50)
   const bb = calcBollingerBands(closes)
   const latestBB = bb.length > 0 ? bb[bb.length - 1] : { mid: NaN, upper: NaN, lower: NaN }
@@ -182,6 +194,11 @@ export default function BtcQuantLab({ candles }: Props) {
       : null
   const vwapData = calcVWAP(candles)
   const latestVWAP = vwapData[vwapData.length - 1]?.value ?? latestClose
+  // Rainbow model — show neutral band when candles data is insufficient
+  const rainbowHigh = hasCandles ? high20 * 1.5 : NaN
+  const rainbowLow = hasCandles ? low20 * 0.6 : NaN
+  const rainbowBand = hasCandles ? getRainbowBand(latestClose, rainbowHigh, rainbowLow) : RAINBOW_BANDS[RAINBOW_BANDS.length - 1]
+
   const fundingInfo = metrics?.fundingRate != null ? interpretFundingRate(metrics.fundingRate) : null
 
   const atrSeries = calcATR(candles, 14)
@@ -191,11 +208,6 @@ export default function BtcQuantLab({ candles }: Props) {
   const latestStD = stoch.d.length > 0 ? stoch.d[stoch.d.length - 1] : NaN
   const stochOk = Number.isFinite(latestStK) && Number.isFinite(latestStD)
   const atrOk = Number.isFinite(latestATR)
-
-  // Rainbow model — approximate BTC rainbow from halving cycles
-  const rainbowHigh = high20 * 1.5
-  const rainbowLow = low20 * 0.6
-  const rainbowBand = getRainbowBand(latestClose, rainbowHigh, rainbowLow)
 
   // 200-day MA deviation regime — buy-the-dip / falling-knife classifier
   const regime = ma200Regime(latestClose, closes, latestRSI)
@@ -229,7 +241,9 @@ export default function BtcQuantLab({ candles }: Props) {
     },
     {
       label: 'VWAP',
-      value: `$${latestVWAP.toLocaleString('en-US', { maximumFractionDigits: 0 })}`,
+      value: Number.isFinite(latestVWAP)
+        ? `$${latestVWAP.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+        : 'N/A',
       signal: latestClose > latestVWAP ? 'ABOVE VWAP ↑' : 'BELOW VWAP ↓',
       color: latestClose > latestVWAP ? 'text-green-400' : 'text-red-400',
     },
@@ -310,6 +324,25 @@ export default function BtcQuantLab({ candles }: Props) {
       <p className="text-[11px] text-slate-500 border border-slate-800 rounded-lg px-3 py-2 bg-slate-900/40">
         <span className="text-emerald-400/90 font-semibold">Live quant</span> — RSI, MACD, EMA, Bollinger, VWAP, ATR(14), Stochastic(14,3,3), 200MA regime recalculated in your browser from the loaded candle series ({candles.length} bars). Derivatives (funding, OI) refresh every 30s; liquidations every 60s. Exchange APIs may be empty when geo-blocked.
       </p>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-slate-400 border border-slate-800/80 rounded-lg px-3 py-2 bg-slate-950/50">
+        <span className="uppercase tracking-wider text-slate-500 font-semibold">Verify</span>
+        <Link href="/backtest" className="text-sky-400 hover:underline">
+          Backtest
+        </Link>
+        <span className="text-slate-600">·</span>
+        <Link href="/simulator?tickers=BTC-USD&mode=historical" className="text-sky-400 hover:underline">
+          Simulator (BTC-USD)
+        </Link>
+        <span className="text-slate-600">·</span>
+        <a
+          href={quantanFeedbackHref('QUANTAN BTC Quant Lab feedback: BTC-USD')}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-amber-400/90 hover:underline"
+        >
+          Feedback
+        </a>
+      </div>
       {derivativesError && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200/90">
           <span className="font-medium text-amber-100">Derivatives / liquidity API</span>

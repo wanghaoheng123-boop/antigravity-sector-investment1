@@ -1,77 +1,83 @@
-/**
- * Polygon.io data provider (free tier: 5 API calls/min, end-of-day data).
- *
- * Requires environment variable: POLYGON_API_KEY
- * Free tier docs: https://polygon.io/docs/stocks/get_v2_aggs_ticker__stocksticker__range__multiplier___timespan___from___to
- */
+import type { DailyFetchOptions, DataProvider, ProviderDailyBar, ProviderQuote } from './types'
 
-import type { DataProvider, DailyBar, QuoteSnapshot } from './types'
+/** Polygon free tier: 5 calls/min — space requests by at least 12s. */
+let polygonLastRequestAt = 0
+const POLYGON_MIN_GAP_MS = 12_000
 
-const POLYGON_BASE = 'https://api.polygon.io'
-const RATE_LIMIT_MS = 13_000  // ~5 req/min with 1 req per 13s
-
-let lastCallMs = 0
-
-async function rateLimitedFetch(url: string, apiKey: string): Promise<Response> {
+async function throttlePolygon(): Promise<void> {
   const now = Date.now()
-  const wait = RATE_LIMIT_MS - (now - lastCallMs)
+  const wait = polygonLastRequestAt + POLYGON_MIN_GAP_MS - now
   if (wait > 0) await new Promise((r) => setTimeout(r, wait))
-  lastCallMs = Date.now()
-  return fetch(`${url}${url.includes('?') ? '&' : '?'}apiKey=${apiKey}`)
+  polygonLastRequestAt = Date.now()
+}
+
+function polygonTicker(symbol: string): string {
+  const u = symbol.trim().toUpperCase()
+  if (u === '^VIX' || u === 'VIX') return 'I:VIX'
+  if (u.startsWith('^')) return `I:${u.slice(1)}`
+  return u
+}
+
+function toYmd(d: Date): string {
+  return d.toISOString().slice(0, 10)
 }
 
 export class PolygonProvider implements DataProvider {
-  readonly name = 'polygon.io'
-  private readonly apiKey: string
-
-  constructor(apiKey?: string) {
-    this.apiKey = apiKey ?? process.env.POLYGON_API_KEY ?? ''
-  }
+  readonly name = 'polygon'
 
   isAvailable(): boolean {
-    return this.apiKey.length > 0
+    return Boolean(process.env.POLYGON_API_KEY?.trim())
   }
 
-  async fetchDaily(ticker: string, startDate: Date | string): Promise<DailyBar[] | null> {
+  async fetchDaily(symbol: string, opts: DailyFetchOptions): Promise<ProviderDailyBar[] | null> {
     if (!this.isAvailable()) return null
-    try {
-      const from = startDate instanceof Date
-        ? startDate.toISOString().slice(0, 10)
-        : startDate
-      const to = new Date().toISOString().slice(0, 10)
-      const url = `${POLYGON_BASE}/v2/aggs/ticker/${ticker}/range/1/day/${from}/${to}?adjusted=true&sort=asc&limit=5000`
-      const res = await rateLimitedFetch(url, this.apiKey)
-      if (!res.ok) return null
-      const data = await res.json() as { results?: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }> }
-      if (!data.results?.length) return null
-      return data.results.map((r) => ({
-        date: new Date(r.t).toISOString().slice(0, 10),
-        open: r.o, high: r.h, low: r.l, close: r.c, volume: r.v,
-      }))
-    } catch {
-      return null
+    const key = process.env.POLYGON_API_KEY!.trim()
+    const ticker = polygonTicker(symbol)
+    const to = new Date()
+    const from = opts.period1
+    const url = `https://api.polygon.io/v2/aggs/ticker/${encodeURIComponent(ticker)}/range/1/day/${toYmd(from)}/${toYmd(to)}?adjusted=true&sort=asc&limit=50000&apiKey=${encodeURIComponent(key)}`
+    await throttlePolygon()
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      results?: { t: number; o: number; h: number; l: number; c: number; v?: number }[]
+      status?: string
     }
+    const results = json.results
+    if (!results?.length) return null
+    const out: ProviderDailyBar[] = []
+    for (const r of results) {
+      out.push({
+        time: Math.floor(r.t / 1000),
+        open: r.o,
+        high: r.h,
+        low: r.l,
+        close: r.c,
+        volume: Number(r.v ?? 0),
+      })
+    }
+    return out
   }
 
-  async fetchQuote(ticker: string): Promise<QuoteSnapshot | null> {
+  async fetchQuote(symbol: string): Promise<ProviderQuote | null> {
     if (!this.isAvailable()) return null
-    try {
-      const url = `${POLYGON_BASE}/v2/last/trade/${ticker}`
-      const res = await rateLimitedFetch(url, this.apiKey)
-      if (!res.ok) return null
-      const data = await res.json() as { results?: { p: number; t: number } }
-      if (!data.results) return null
-      return {
-        ticker,
-        price: data.results.p,
-        change: 0,
-        changePct: 0,
-        updatedAt: new Date(data.results.t / 1_000_000).toISOString(),
-      }
-    } catch {
-      return null
+    const key = process.env.POLYGON_API_KEY!.trim()
+    const ticker = polygonTicker(symbol)
+    const url = `https://api.polygon.io/v2/last/trade/${encodeURIComponent(ticker)}?apiKey=${encodeURIComponent(key)}`
+    await throttlePolygon()
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const json = (await res.json()) as {
+      results?: { p?: number; t?: number } | { p?: number; t?: number }[]
+      status?: string
     }
+    const r = json.results
+    const row = Array.isArray(r) ? r[0] : r
+    if (!row || typeof row !== 'object') return null
+    const p = row.p
+    if (p == null || !Number.isFinite(p)) return null
+    const t = row.t
+    const regularMarketTime = t != null ? new Date(t / 1_000_000) : null
+    return { symbol: ticker, price: p, regularMarketTime }
   }
 }
-
-export const polygonProvider = new PolygonProvider()

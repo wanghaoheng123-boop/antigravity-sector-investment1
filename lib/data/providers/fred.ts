@@ -1,107 +1,52 @@
 /**
- * FRED (Federal Reserve Economic Data) provider.
- *
- * Free, no API key required for public series.
- * Optional FRED_API_KEY env var for higher rate limits.
- *
- * Common series IDs:
- *   FEDFUNDS   — Federal Funds Rate (monthly)
- *   CPIAUCSL   — CPI All Urban Consumers (monthly)
- *   GDP        — Real GDP (quarterly)
- *   UNRATE     — Unemployment Rate (monthly)
- *   DGS10      — 10-Year Treasury Constant Maturity Rate (daily)
- *   T10YIE     — 10-Year Breakeven Inflation Rate (daily)
+ * FRED macro series (optional `FRED_API_KEY`).
+ * Not part of the equity `DataProvider` chain — use `fetchFredObservations` directly.
  */
 
-import type { MacroDataProvider, DataProvider, DailyBar, QuoteSnapshot, MacroSeries } from './types'
+let fredLastRequestAt = 0
+const FRED_MIN_GAP_MS = 300
 
-const FRED_BASE = 'https://fred.stlouisfed.org/graph/fredgraph.csv'
-const FRED_API_BASE = 'https://api.stlouisfed.org/fred'
-
-export class FredProvider implements MacroDataProvider {
-  readonly name = 'fred'
-  private readonly apiKey: string
-
-  constructor(apiKey?: string) {
-    this.apiKey = apiKey ?? process.env.FRED_API_KEY ?? ''
-  }
-
-  isAvailable(): boolean {
-    return true  // FRED public CSV endpoint requires no API key
-  }
-
-  /** FRED provides economic series, not individual stock OHLCV data. */
-  async fetchDaily(_ticker: string, _startDate: Date | string): Promise<DailyBar[] | null> {
-    return null  // not applicable
-  }
-
-  async fetchQuote(_ticker: string): Promise<QuoteSnapshot | null> {
-    return null  // not applicable
-  }
-
-  /**
-   * Fetches a FRED time series by series ID.
-   * Uses the CSV endpoint (no API key needed) or JSON API endpoint (higher rate limits).
-   *
-   * @param seriesId  FRED series identifier, e.g. "FEDFUNDS"
-   * @param startDate Optional start date (ISO string or Date)
-   */
-  async fetchMacroSeries(seriesId: string, startDate?: Date | string): Promise<MacroSeries | null> {
-    try {
-      const from = startDate
-        ? (startDate instanceof Date ? startDate.toISOString().slice(0, 10) : startDate)
-        : '1990-01-01'
-
-      // Prefer JSON API if key is available, else fall back to CSV
-      if (this.apiKey) {
-        return await this._fetchViaApi(seriesId, from)
-      }
-      return await this._fetchViaCsv(seriesId, from)
-    } catch {
-      return null
-    }
-  }
-
-  private async _fetchViaCsv(seriesId: string, from: string): Promise<MacroSeries | null> {
-    const url = `${FRED_BASE}?id=${seriesId}&vintage_date=&cosd=${from}`
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const text = await res.text()
-    const lines = text.trim().split('\n')
-    if (lines.length < 2) return null
-
-    const observations = lines.slice(1)
-      .map((line) => {
-        const [date, val] = line.split(',')
-        const value = val?.trim() === '.' || val?.trim() === '' ? null : parseFloat(val)
-        return { date: date?.trim() ?? '', value }
-      })
-      .filter((o) => o.date.match(/^\d{4}-\d{2}-\d{2}$/))
-
-    return { seriesId, observations, units: '', frequency: 'unknown' }
-  }
-
-  private async _fetchViaApi(seriesId: string, from: string): Promise<MacroSeries | null> {
-    const url = `${FRED_API_BASE}/series/observations?series_id=${seriesId}&observation_start=${from}&api_key=${this.apiKey}&file_type=json`
-    const res = await fetch(url)
-    if (!res.ok) return null
-    const data = await res.json() as {
-      observations?: Array<{ date: string; value: string }>
-      units?: string
-      frequency?: string
-    }
-    if (!data.observations) return null
-    const observations = data.observations.map((o) => ({
-      date: o.date,
-      value: o.value === '.' ? null : parseFloat(o.value),
-    }))
-    return {
-      seriesId,
-      observations,
-      units: data.units ?? '',
-      frequency: data.frequency ?? '',
-    }
-  }
+async function throttleFred(): Promise<void> {
+  const now = Date.now()
+  const wait = fredLastRequestAt + FRED_MIN_GAP_MS - now
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+  fredLastRequestAt = Date.now()
 }
 
-export const fredProvider = new FredProvider()
+export function isFredConfigured(): boolean {
+  return Boolean(process.env.FRED_API_KEY?.trim())
+}
+
+export type FredObservation = { date: string; value: number }
+
+export async function fetchFredObservations(
+  seriesId: string,
+  options?: { observationStart?: string; observationEnd?: string }
+): Promise<FredObservation[] | null> {
+  const key = process.env.FRED_API_KEY?.trim()
+  if (!key) return null
+  const params = new URLSearchParams({
+    series_id: seriesId,
+    api_key: key,
+    file_type: 'json',
+  })
+  if (options?.observationStart) params.set('observation_start', options.observationStart)
+  if (options?.observationEnd) params.set('observation_end', options.observationEnd)
+  const url = `https://api.stlouisfed.org/fred/series/observations?${params.toString()}`
+  await throttleFred()
+  const res = await fetch(url)
+  if (!res.ok) return null
+  const json = (await res.json()) as {
+    observations?: { date: string; value: string }[]
+  }
+  const obs = json.observations
+  if (!obs?.length) return null
+  const out: FredObservation[] = []
+  for (const o of obs) {
+    if (o.value === '.' || o.value === '') continue
+    const value = parseFloat(o.value)
+    if (!Number.isFinite(value)) continue
+    out.push({ date: o.date, value })
+  }
+  return out.length ? out : null
+}

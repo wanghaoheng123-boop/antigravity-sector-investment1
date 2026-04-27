@@ -63,8 +63,16 @@ export default function RootLayout({
                   Markets
                   <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
                 </Link>
+                <Link href="/simulator" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Simulator
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
                 <Link href="/desk" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
                   Desk
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
+                <Link href="/sector/technology" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Sectors
                   <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
                 </Link>
                 <Link href="/commodities" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
@@ -77,6 +85,14 @@ export default function RootLayout({
                 </Link>
                 <Link href="/heatmap" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
                   Heatmap
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
+                <Link href="/portfolio" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Portfolio
+                  <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
+                </Link>
+                <Link href="/monitor" className="text-xs font-medium text-slate-400 hover:text-white transition-colors relative group">
+                  Monitor
                   <span className="absolute -bottom-0.5 left-0 w-0 h-px bg-amber-500 group-hover:w-full transition-all duration-200" />
                 </Link>
                 <Link href="/ma-deviation" className="text-xs font-medium text-slate-400 hover:text-white transition-colors flex items-center gap-1">

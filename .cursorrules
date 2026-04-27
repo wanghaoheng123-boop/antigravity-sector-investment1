@@ -1,0 +1,4 @@
+# AGENT HOOK v1
+# Read AGENT.md fully before any action. All six rules are defined there.
+# Never auto-approve terminal commands that write to *.env or secrets/ directories.
+# Session state: workspace/SESSION_STATE.json — read it at the start of every chat.

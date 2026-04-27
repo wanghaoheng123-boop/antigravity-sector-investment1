@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "policy": "profiled-return-first-with-risk-floors",
+  "defaultProfile": "staging",
+  "profiles": {
+    "staging": {
+      "A1_minAvgAnnReturn": 0.03,
+      "A2_minWinRate": 0.48,
+      "B1_maxPortfolioDrawdown": 0.38,
+      "B3_minSharpe": 0.2,
+      "B3_minSortino": 0.3,
+      "D3_minInstrumentsPerWindow": 8,
+      "R1_minStrictQualified": 2,
+      "R2_minTop5Stability": 0.4,
+      "R3_minTop10RankCorrelation": 0.4
+    },
+    "strict": {
+      "A1_minAvgAnnReturn": 0.06,
+      "A2_minWinRate": 0.5,
+      "B1_maxPortfolioDrawdown": 0.35,
+      "B3_minSharpe": 0.4,
+      "B3_minSortino": 0.6,
+      "D3_minInstrumentsPerWindow": 8,
+      "R1_minStrictQualified": 4,
+      "R2_minTop5Stability": 0.55,
+      "R3_minTop10RankCorrelation": 0.55
+    }
+  }
+}

@@ -1,0 +1,5 @@
+mode: paper
+executor_backend: cursor_local
+default_symbol: SPY
+max_iterations_per_run: 50
+transaction_cost_bps: 22

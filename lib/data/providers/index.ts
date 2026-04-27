@@ -1,57 +1,66 @@
-/**
- * Data provider factory with automatic fallback chain.
- *
- * Priority order: Yahoo Finance → Polygon.io → Alpha Vantage
- *
- * Yahoo is always tried first (free, no key). Polygon and AlphaVantage
- * are only used if their API keys are configured AND Yahoo fails.
- */
+import { AlphaVantageProvider } from './alphavantage'
+import { PolygonProvider } from './polygon'
+import { StooqProvider } from './stooq'
+import type { DailyFetchOptions, DataProvider } from './types'
+import { YahooProvider } from './yahoo'
 
-export type { DataProvider, MacroDataProvider, DailyBar, QuoteSnapshot, MacroSeries } from './types'
-export { YahooProvider, yahooProvider } from './yahoo'
-export { PolygonProvider, polygonProvider } from './polygon'
-export { AlphaVantageProvider, alphaVantageProvider } from './alphavantage'
-export { FredProvider, fredProvider } from './fred'
+export type { ChartInterval, DailyFetchOptions, DataProvider, ProviderDailyBar, ProviderQuote } from './types'
+export { YahooProvider } from './yahoo'
+export { PolygonProvider } from './polygon'
+export { AlphaVantageProvider } from './alphavantage'
+export { StooqProvider } from './stooq'
+export { fetchFredObservations, isFredConfigured } from './fred'
+export type { FredObservation } from './fred'
+export { fetchVixHistory } from './cboe'
+export type { VixHistoryRow } from './cboe'
+export { fetchRecessionRanges, isRecession } from './nber'
+export type { RecessionRange } from './nber'
+export { fetchRecent13FFilings, isEdgarConfigured } from './edgar'
+export type { Edgar13FFiling } from './edgar'
+export { cotLegacyFuturesUrl } from './cftc'
 
-import { yahooProvider } from './yahoo'
-import { polygonProvider } from './polygon'
-import { alphaVantageProvider } from './alphavantage'
-import { fredProvider } from './fred'
-import type { DataProvider, DailyBar, QuoteSnapshot } from './types'
+/** Polygon → Alpha Vantage → Yahoo (paid providers optional; Yahoo always works). */
+class ChainedEquityProvider implements DataProvider {
+  readonly name = 'chain'
 
-/**
- * Fetches daily bars using the first available provider in the chain.
- * Logs which provider succeeded.
- */
-export async function fetchDailyWithFallback(
-  ticker: string,
-  startDate: Date | string,
-): Promise<DailyBar[] | null> {
-  const providers: DataProvider[] = [yahooProvider, polygonProvider, alphaVantageProvider]
+  constructor(private readonly providers: DataProvider[]) {}
 
-  for (const provider of providers) {
-    if (!provider.isAvailable()) continue
-    const result = await provider.fetchDaily(ticker, startDate)
-    if (result && result.length > 0) {
-      return result
+  isAvailable(): boolean {
+    return this.providers.some((p) => p.isAvailable())
+  }
+
+  async fetchDaily(symbol: string, opts: DailyFetchOptions) {
+    for (const p of this.providers) {
+      if (!p.isAvailable()) continue
+      try {
+        const rows = await p.fetchDaily(symbol, opts)
+        if (rows && rows.length > 0) return rows
+      } catch {
+        /* try next */
+      }
     }
+    return null
   }
-  return null
+
+  async fetchQuote(symbol: string) {
+    for (const p of this.providers) {
+      if (!p.isAvailable()) continue
+      try {
+        const q = await p.fetchQuote(symbol)
+        if (q) return q
+      } catch {
+        /* try next */
+      }
+    }
+    return null
+  }
 }
 
-/**
- * Fetches a real-time/delayed quote using the first available provider.
- */
-export async function fetchQuoteWithFallback(ticker: string): Promise<QuoteSnapshot | null> {
-  const providers: DataProvider[] = [yahooProvider, polygonProvider, alphaVantageProvider]
+let cached: DataProvider | null = null
 
-  for (const provider of providers) {
-    if (!provider.isAvailable()) continue
-    const result = await provider.fetchQuote(ticker)
-    if (result) return result
+export function getEquityDataProvider(): DataProvider {
+  if (!cached) {
+    cached = new ChainedEquityProvider([new PolygonProvider(), new AlphaVantageProvider(), new YahooProvider()])
   }
-  return null
+  return cached
 }
-
-/** FRED macro data — always uses the FRED provider directly. */
-export { fredProvider as macroProvider }

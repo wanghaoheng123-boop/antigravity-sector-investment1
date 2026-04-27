@@ -12,44 +12,61 @@ Goal: >80% selective signal accuracy across all market conditions. Bloomberg-lik
 
 **Stack:** Next.js 14 App Router · TypeScript · Tailwind CSS · yahoo-finance2 · Vitest · lightweight-charts
 
+---
+
+## Institutional backtest, optimization, and QA charter (2026)
+
+**Purpose.** Make the equity simulator/backtest the honest center of the product: preset-driven workflows, bounded optimization, walk-forward discipline, options-aware **guards** (not alpha promises), and reproducible audit metadata.
+
+**Success metrics (statistical, not dollar).** Stable OOS vs IS behavior on toy and real series; bounded iteration counts respected; typecheck + Vitest + signal benchmark green; no secrets in structured logs; latency within documented caps.
+
+**Non-goals.** No guaranteed returns; no autonomous “supervisor” trading agents in runtime; no import of unvetted third-party “profit strategies” (see `docs/EXTERNAL_STRATEGY_VETTING.md`).
+
+**Review loop.** Design note → implementation → tests (`npm run test`, `npm run benchmark`, `npm run benchmark:optimizer`) → CI → staging → human sign-off. Rollback = revert config schema defaults and disable new fusion flags.
+
+**Ownership / ops cadence.** Engineering owns code + CI; product owns copy/disclaimers; weekly review of optimizer defaults and Yahoo rate-limit incidents; monthly methodology review of walk-forward assumptions.
+
 **Owner:** Trader/investor building quant platform. Values backtesting rigor, institutional-grade analysis, and continuous improvement. Familiar with options Greeks, dark pools, gamma exposure, sector rotation.
 
 ---
 
-## 7-Phase Upgrade Plan — Status
+## Upgrade Plan — Status
 
 | Phase | Name | Status | Branch / Commit |
 |-------|------|--------|-----------------|
 | 1 | Testing & Validation Foundation | ✅ COMPLETE | commit `eec5b30` |
 | 2 | Signal Engine Hardening | ✅ COMPLETE | merged via PR #3 |
-| 3 | Options & Flow Data | ✅ COMPLETE | branch `claude/pedantic-morse` |
-| 4 | Advanced Analytics | ✅ COMPLETE | branch `claude/pedantic-morse` |
-| 5 | Data Infrastructure | ✅ COMPLETE | branch `claude/loving-banach` |
-| 6 | Portfolio & Risk Management | ✅ COMPLETE | branch `claude/loving-banach` |
-| 7 | Continuous Optimization | ✅ COMPLETE | branch `claude/loving-banach` |
-| 8 | Benchmark Fix + Optimization Loops (1-3) | 🔲 INFRASTRUCTURE READY | Run scripts to execute |
-| 9 | Stock-by-Stock Analysis Report | ✅ COMPLETE | `docs/archive/QUANTAN_ANALYSIS_REPORT.md` |
-| 10 | Cleanup + P1 Audit | ✅ COMPLETE | merged via PR #6, PR for branch `fix/dead-ema-and-progress-audit` |
+| 3 | Options & Flow Data | ✅ COMPLETE | branch `claude/pedantic-morse` (PR pending) |
+| 4 | Advanced Analytics | ✅ COMPLETE | branch `claude/pedantic-morse` (PR pending) |
+| 5 | Data Infrastructure | ✅ COMPLETE | main / workspace |
+| 6 | Portfolio & Risk Management | ✅ IN PROGRESS (MVP shipped) | `lib/portfolio/*`, `/portfolio` |
+| 7 | Continuous Optimization | ✅ IN PROGRESS (MVP shipped) | `scripts/nightly-backtest.ts`, workflow, `/monitor`, `lib/optimize/gridSearch.ts`, `POST /api/optimize` |
+| 8 | Data Infrastructure 2.0 (30Y history) | 🔄 IN PROGRESS | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 9 | Business Cycle Intelligence Engine | 🔄 IN PROGRESS | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 10 | Advanced Valuation Suite (CAPE, reverseDCF, DDM, EPV, EVA) | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 11 | Options Microstructure 2.0 + Strike Recommendation | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 12 | Institutional Accumulation Detection (13F, COT, whales) | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 13 | 30-Year Backtesting with Regime Attribution | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 14 | OPUS-Orchestrated Self-Optimizing Feedback Loop | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 15 | Institutional Output Layer (Buffet-style reports) | 🔲 PENDING | see `docs/MASTER_PLAN_PHASES_8_16.md` |
+| 16 | Verification / Testing / Inspection System | 🔲 PENDING (runs in parallel) | see `docs/MASTER_PLAN_PHASES_8_16.md` |
 
----
+### Phases 8–16 — Canonical Plan
 
-## Phase 10 — Cleanup, Audit & P1 Closure (April 2026)
+**Goal:** Upgrade QUANTAN to institutional-grade (Warren Buffet / Wall Street) level with an OPUS AI self-optimizing feedback loop.
 
-### What was done
-- **PR #6 (cleanup):** removed 9 dead files, archived 6 historical specs to `docs/archive/`
-- **Audit pass:** reviewed every "remaining bug" claim in the now-archived `progress.md`. Result:
-  - ❌ "Split-adjusted prices" — **stale claim, not a bug**. yahoo-finance2's `chart()` returns split-adjusted close in `q.close` by default. Verified by sampling NVDA (10:1 split 2024-06-10) and TSLA (3:1 split 2022-08-25) — prices show smooth continuity across splits, not raw $1200→$120 jumps.
-  - ❌ "Kelly formula is dead code" — **stale claim, not dead**. `lib/quant/kelly.ts` is imported in 8 places (live route, QuantLab, signals, engine, scripts, tests).
-  - ✅ "EMA seeding bug in technicals.ts" — was real but in dead code (the `ema` named export in technicals.ts had zero callers). Fixed by **deleting** the dead buggy function (commit `7fc76ff`); canonical `ema`/`emaFull` from `indicators.ts` remain the source of truth.
-  - ✅ "BTC regime classification missing" — was real. Added `btcRegime()` in `lib/quant/btc-indicators.ts` returning STRONG_BULL / BULL / NEUTRAL / BEAR / STRONG_BEAR / EUPHORIA / CAPITULATION with confidence derived from ATR%. 7 unit tests.
-  - ✅ "SPY relative strength missing" — was real. Added `relativeStrengthVsBenchmark()` in `lib/quant/relativeStrength.ts` computing ratio (ticker/SPY) over 1m/3m/6m windows. 6 unit tests.
-  - ✅ "No automated data refresh" — was real. Added `.github/workflows/refresh-data.yml` running weekly Sunday 22:00 UTC.
+**Canonical plan document:** [`docs/MASTER_PLAN_PHASES_8_16.md`](docs/MASTER_PLAN_PHASES_8_16.md) — read this in full before starting any Phase 8+ task.
 
-### Standing notes for future agents
-- **Trust the code, not `progress.md`.** That file (now in `docs/archive/`) had multiple stale claims about "remaining bugs" that turned out to be already-fixed or already-handled. Always grep before fixing.
-- **DeepSeek v4 Pro** is wired via MCP (`mcp__deepseek__chat_completion`). A user-level hook at `~/.claude/settings.json` enforces `model: "deepseek-v4-pro"` only — Flash fallback is hard-blocked at the harness level. Use Pro for analysis offload; Opus for architecture and final code review.
-- **CI deploys automatically:** push to `main` → Vercel auto-deploys to https://quantan.vercel.app
-- **Weekly data refresh** runs automatically; if you need a manual refresh, trigger `Weekly Data Refresh` workflow via GitHub Actions UI.
+**Memory bank:** [`memory/MEMORY.md`](memory/MEMORY.md) — shared cross-agent memory (plan summary, architecture, user profile).
+
+**Cross-agent resume protocol:** [`memory/agent_handoff_protocol.md`](memory/agent_handoff_protocol.md) + [`memory/project_status.md`](memory/project_status.md).
+
+When user says **"continue"**, agents should resume from the first pending item in `memory/project_status.md` and the phase table below without re-planning.
+
+**AI model hierarchy for Phases 8–16:**
+- **OPUS** (`claude-opus-4-7`) — brain / orchestrator (strategy, hypotheses, quality gates, report prose)
+- **Sonnet** (`claude-sonnet-4-6`) — executor (code generation, algorithm implementation)
+- **Haiku** (`claude-haiku-4-5`) — fast processor (data pipelines, validation, real-time signals)
 
 ---
 
@@ -69,7 +86,7 @@ Goal: >80% selective signal accuracy across all market conditions. Bloomberg-lik
 - `lib/backtest/signals.ts` — `enhancedCombinedSignal()` with 7-factor weighted scoring, regime-adaptive weights
 - 187 tests passing
 
-### Phase 3 (current branch)
+### Phase 3 (branch: claude/pedantic-morse)
 - `lib/options/greeks.ts` — Black-Scholes, Greeks, Newton-Raphson IV
 - `lib/options/chain.ts` — Yahoo `options()` wrapper + greeks enrichment (r = 5.25%)
 - `lib/options/sentiment.ts` — P/C ratios, max pain
@@ -80,7 +97,7 @@ Goal: >80% selective signal accuracy across all market conditions. Bloomberg-lik
 - **Options tab** added to `/stock/[ticker]` (lazy-loaded)
 - 4 test files in `__tests__/options/`
 
-### Phase 4 (current branch)
+### Phase 4 (branch: claude/pedantic-morse)
 - `lib/quant/intermarket.ts` — correlations vs SPY/^VIX/UUP/TLT (63d + 252d), risk_on/risk_off/mixed regime
 - `lib/quant/sectorRotation.ts` — momentum (40×3mo + 30×6mo + 30×12mo − 1mo crash filter) + RSI mean-reversion boost
 - `app/api/sector-rotation/route.ts` — 1hr cached endpoint
@@ -89,120 +106,32 @@ Goal: >80% selective signal accuracy across all market conditions. Bloomberg-lik
 - `lib/ml/client.ts` + `app/api/ml/[ticker]/route.ts` — graceful TS proxy
 - 2 new test files
 
-**Current test count: 266 passing · TypeScript clean**
+**Test count (as of Phases 3 & 4): 266 passing · TypeScript clean**
+
+### Phase 5 (Data Infrastructure)
+- `lib/data/providers/types.ts` — `DataProvider`, `ProviderDailyBar`, `ProviderQuote`
+- `lib/data/providers/yahoo.ts` — Yahoo Finance wrapper (`chart`, `quote`)
+- `lib/data/providers/polygon.ts` — Polygon aggregates + last trade (optional `POLYGON_API_KEY`, ~12s throttle for free tier)
+- `lib/data/providers/alphavantage.ts` — daily + global quote (optional `ALPHAVANTAGE_API_KEY`)
+- `lib/data/providers/fred.ts` — `fetchFredObservations()` (optional `FRED_API_KEY`)
+- `lib/data/providers/index.ts` — `getEquityDataProvider()` chain: **Polygon → Alpha Vantage → Yahoo**
+- `lib/data/warehouse.ts` — schema helpers + `readCandles` / `listWarehouseTickers` (DB-agnostic interface)
+- `scripts/migrate-json-to-sqlite.mjs` — JSON `scripts/backtestData/*.json` → SQLite (uses Node **22.5+** built-in `node:sqlite`; run `npm run migrate:warehouse`). On Google Drive / synced folders SQLite may lock — write the DB to a **local path** and set `QUANTAN_SQLITE_PATH` there.
+- `lib/backtest/dataLoader.ts` — when `QUANTAN_SQLITE_PATH` points at an existing file, loads candles from SQLite (via `node:sqlite` when available); else JSON. No network.
+- `app/api/stream/[ticker]/route.ts` — SSE quote stream (Yahoo every 15s)
+- `app/api/analytics/[ticker]/route.ts` — uses `getEquityDataProvider()` for history + quote
+- `types/node-sqlite.d.ts` — light typings for `node:sqlite` when `@types/node` lags
 
 ---
 
-## Phase 5–7 Complete — What Was Built in Branch `claude/loving-banach`
-
-### Phase 5 (Data Infrastructure) — Pre-existing + confirmed complete
-- `lib/data/providers/` — types.ts, yahoo.ts, polygon.ts, alphavantage.ts, fred.ts, index.ts
-- `lib/data/warehouse.ts` — SQLite warehouse with better-sqlite3
-
-### Phase 6 (Portfolio & Risk)
-- `lib/portfolio/tracker.ts` — position model, CRUD, localStorage persistence
-- `lib/portfolio/var.ts` — Historical VaR/CVaR (95%/99%, 1d/10d), Kupiec backtesting, marginal VaR
-- `lib/portfolio/riskParity.ts` — inverse-vol weighting, ERC (Maillard-Roncalli), correlation-adjusted Kelly
-- `lib/portfolio/diversification.ts` — correlation matrix, Herfindahl index, sector exposure
-- `lib/portfolio/stressTest.ts` — GFC 2008, COVID 2020, Rate Shock 2022, Dot-com 2000, Q4 2018
-
-### Phase 7 (Continuous Optimization)
-- `lib/optimize/gridSearch.ts` — walk-forward grid search (70% IS / 30% OOS), aggregation
-- `lib/optimize/parameterSets.ts` — Loop 1 (768 combos), Loop 2 (288 combos), Loop 3 exit params
-- `lib/optimize/sectorProfiles.ts` — 11 GICS sector profiles with differentiated gate configs
-- `lib/backtest/exitRules.ts` — ATR-adaptive stops, profit-taking, trailing stops, panic exit, time exit
-- `lib/backtest/portfolioBacktest.ts` — multi-instrument engine (max 10 positions, correlation-adjusted)
-- `scripts/benchmark-enhanced.ts` — TypeScript benchmark using actual `enhancedCombinedSignal()`
-
-### Signal Improvements (Optimization Loop 1/2 infrastructure)
-- `lib/backtest/signals.ts` — Added: `isGoldenCross()`, `hasPositiveMomentum()`, `detectBullishDivergence()`,
-  `detectVolumeClimax()`, `isMACompression()`, `SectorGateConfig` interface
-- `enhancedCombinedSignal()` updated to accept `sectorGates?: SectorGateConfig` (8th parameter)
-  with gate logic: golden cross filter, momentum filter, RSI divergence bonus (+0.15),
-  volume climax bonus (+0.20), MA compression bonus (+0.10), per-sector threshold overrides
-
-### Analysis Report
-- `QUANTAN_ANALYSIS_REPORT.md` — Complete per-stock analysis (55 stocks + BTC), 11 sector deep dives,
-  root cause analysis, market condition matrix, AI agent optimization directives JSON block
-
-### New npm scripts
-```bash
-npm run benchmark:enhanced    # scripts/benchmark-enhanced.ts (Phase 2 baseline)
-npm run optimize:grid         # scripts/optimize-grid.ts (Loop 1 — TO CREATE)
-npm run portfolio:backtest    # scripts/portfolio-backtest.ts (Loop 3 — TO CREATE)
-```
-
-## What To Build Next: Phase 8 — Run Optimization Loops
-
-### IMMEDIATE: Scripts to create for running the loops
-
-1. **`scripts/optimize-grid.ts`** — Runs Loop 1 grid search:
-   ```typescript
-   import { gridSearch, aggregateGridResults } from '../lib/optimize/gridSearch'
-   import { LOOP1_GRID } from '../lib/optimize/parameterSets'
-   // Load all 56 instruments, run gridSearch on each, aggregate results
-   // Save to scripts/optimization-results-loop1.json
-   ```
-
-2. **`scripts/portfolio-backtest.ts`** — Runs Loop 3 portfolio simulation:
-   ```typescript
-   import { runPortfolioBacktest } from '../lib/backtest/portfolioBacktest'
-   // Load instruments, run multi-stock portfolio backtest
-   // Save to scripts/portfolio-backtest-results.json
-   ```
-
-3. **Update `scripts/benchmark-enhanced.ts`** — Apply sector profiles (Loop 2):
-   ```typescript
-   import { getProfileForTicker } from '../lib/optimize/sectorProfiles'
-   // Pass profile as sectorGates argument to enhancedCombinedSignal()
-   ```
-
-## ── ORIGINAL Phase 5 Plan (for reference — now complete) ──
-
-### [ORIGINAL] Phase 5 — Data Infrastructure
-
-### 5.1 Provider Abstraction (`lib/data/providers/`)
-```
-lib/data/providers/
-  types.ts       — DataProvider interface: fetchDaily(), fetchQuote(), isAvailable()
-  yahoo.ts       — Wraps existing yahoo-finance2 usage (refactor existing code)
-  polygon.ts     — Polygon.io free tier (5 calls/min)
-  alphavantage.ts — AlphaVantage (25/day free tier)
-  fred.ts        — FRED macro data (Fed Funds rate, CPI, GDP, unemployment)
-  index.ts       — Factory: Yahoo → Polygon → AlphaVantage fallback chain
-```
-
-### 5.2 SQLite Data Warehouse
-- `lib/data/warehouse.ts` — `better-sqlite3` connection + schema
-- Tables: `candles(ticker, date, open, high, low, close, volume)`, `quotes(ticker, price, updated_at)`, `meta(key, value)`
-- `scripts/migrate-json-to-sqlite.ts` — one-time migration from `scripts/backtestData/`
-- Update `lib/backtest/dataLoader.ts` to read from SQLite when available, fallback to JSON
-- **New dep:** `better-sqlite3`, `@types/better-sqlite3`
-
-### 5.3 SSE Streaming (works on Vercel — no WebSockets needed)
-- `app/api/stream/[ticker]/route.ts` — Server-Sent Events, polls Yahoo every 15s during market hours
-- Client uses `EventSource` API
-- Broadcasts: price updates, signal changes
-
-### Phase 5 Implementation Order
-1. `lib/data/providers/types.ts` — interface definition
-2. `lib/data/providers/yahoo.ts` — refactor existing yahoo calls
-3. `lib/data/providers/index.ts` — factory + fallback chain
-4. `lib/data/warehouse.ts` + schema migration
-5. Update `lib/backtest/dataLoader.ts`
-6. Add Polygon, AlphaVantage, FRED providers
-7. SSE streaming endpoint
-
----
-
-## Phase 6 — Portfolio & Risk (after Phase 5)
+## What To Build Next: Phase 6 — Portfolio & Risk
 
 ```
 lib/portfolio/
-  tracker.ts        — positions, cash, unrealized PnL (localStorage MVP)
-  riskParity.ts     — inverse-volatility weighting, iterative risk parity
+  tracker.ts         — positions, cash, unrealized PnL (localStorage MVP)
+  riskParity.ts      — inverse-volatility weighting, iterative risk parity
   diversification.ts — correlation matrix, Herfindahl concentration index
-  stressTest.ts     — GFC 2008, COVID 2020, Rate Shock 2022 scenarios
+  stressTest.ts      — GFC 2008, COVID 2020, Rate Shock 2022 scenarios
 app/portfolio/page.tsx — Portfolio dashboard
 ```
 
@@ -211,9 +140,16 @@ app/portfolio/page.tsx — Portfolio dashboard
 ## Phase 7 — Continuous Optimization (after Phase 6)
 
 ```
-scripts/nightly-backtest.ts     — Fetch latest data, run 56-instrument backtest, alert if win rate < 55%
+scripts/nightly-backtest.ts      — Fetch latest data, run 56-instrument backtest, alert if win rate < 55%
 .github/workflows/nightly-backtest.yml — Scheduled CI
-lib/optimize/gridSearch.ts       — Walk-forward parameter grid search (70% in-sample, 30% OOS)
+lib/strategy/strategyConfig.ts   — Strategy DSL: merge/validate, presets, toBacktestConfig (shared by simulator, backtest, optimize)
+lib/strategy/optionsFilter.ts    — Options snapshot fetch + conservative filter/fusion for equity paths
+lib/optimize/gridSearch.ts       — Bounded grid search; walk-forward–scored variants
+lib/optimize/executeOptimize.ts  — Serverless-bounded optimize orchestration
+lib/infra/runAudit.ts            — traceId, audit blocks, structured run logging
+lib/infra/rateLimit.ts           — Client key + rate limits on simulator/backtest/optimize routes
+app/api/optimize/route.ts        — POST bounded parameter search
+app/api/optimize/job/route.ts    — Async job id + polling for long optimize runs
 app/monitor/page.tsx             — Rolling 30d win rate, signal heatmap, data quality scores
 ```
 
@@ -221,58 +157,103 @@ app/monitor/page.tsx             — Rolling 30d win rate, signal heatmap, data 
 
 ## Key Architecture Facts
 
-### Running Tests
+### Running Tests & Verification
 ```bash
-npm install           # first time only — worktree has no node_modules
-npm run test          # vitest run (Windows: node_modules/.bin/vitest.cmd run)
-npm run typecheck     # tsc --noEmit
-npm run benchmark     # scripts/benchmark-signals.mjs
+npm install           # first time — node_modules may not exist in a fresh worktree
+npm run test          # vitest run (__tests__/**/*.test.ts)
+npm run test:types    # tsc --noEmit
+npm run typecheck     # same as test:types
+npm run benchmark     # scripts/benchmark-signals.mjs (win rate must stay >= 55%)
+npm run benchmark:optimizer  # synthetic bounded grid + walk-forward smoke (tsx)
+npm run migrate:warehouse   # optional: build SQLite from scripts/backtestData (Node 22.5+)
 ```
 
-### API Route Pattern
+> **Windows note:** If `npm run test` fails with "not recognized", use `node_modules/.bin/vitest.cmd run` directly.
+
+### Environment variables (Phase 5)
+| Variable | Purpose |
+|----------|---------|
+| `POLYGON_API_KEY` | Polygon.io (optional; chain tries before Yahoo) |
+| `ALPHAVANTAGE_API_KEY` | Alpha Vantage (optional) |
+| `FRED_API_KEY` | FRED macro series for `fetchFredObservations()` |
+| `QUANTAN_SQLITE_PATH` | Absolute path to SQLite warehouse file for `dataLoader` |
+
+### API Route Pattern (canonical)
 ```typescript
-// See app/api/analytics/[ticker]/route.ts for the canonical pattern
+// See app/api/analytics/[ticker]/route.ts (uses getEquityDataProvider) or chart route (Yahoo direct)
 import { NextResponse } from 'next/server'
-import YahooFinance from 'yahoo-finance2'
 import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
-// ...
-return NextResponse.json(data, { headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' } })
+
+export async function GET(_req: Request, { params }: { params: { ticker: string } }) {
+  const symbol = yahooSymbolFromParam(params.ticker)
+  try {
+    // ... fetch data ...
+    return NextResponse.json(data, { headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' } })
+  } catch (e) {
+    return NextResponse.json({ error: 'Failed', details: String(e) }, { status: 502 })
+  }
+}
 ```
 
 ### Key Shared Utilities
-| File | Exports |
-|------|---------|
-| `lib/quant/indicators.ts` | `OhlcBar`, `OhlcvBar`, `smaArray`, `emaArray`, `rsiArray`, `rsiLatest`, `macdArray`, `atrArray`, `adxArray`, `obvArray`, `bbArray`, `stochRsiArray` |
+| File | Key Exports |
+|------|-------------|
+| `lib/quant/indicators.ts` | `OhlcBar`, `OhlcvBar`, `rsiLatest()`, `smaArray()`, `emaArray()`, `macdArray()`, `atrArray()`, `adxArray()`, `bbArray()` |
 | `lib/quant/relativeStrength.ts` | `correlation()`, `logReturns()`, `alignCloses()` |
-| `lib/sectors.ts` | `SECTORS`, `SECTOR_ETFS` |
+| `lib/sectors.ts` | `SECTORS[]`, `SECTOR_ETFS[]` |
 | `lib/quant/yahooSymbol.ts` | `yahooSymbolFromParam()` |
 | `lib/backtest/dataLoader.ts` | `loadStockHistory()`, `availableTickers()` |
+| `lib/data/providers/index.ts` | `getEquityDataProvider()`, `fetchFredObservations()` |
+| `lib/data/warehouse.ts` | `readCandles()`, `warehouseTickerKey`, `WAREHOUSE_ENV_PATH` |
+| `lib/options/chain.ts` | `EnrichedChain`, `EnrichedContract`, `CallOrPut`, `fetchOptionsChain()` |
+| `lib/options/greeks.ts` | `blackScholesPrice()`, `greeks()`, `impliedVolatility()` |
+| `lib/quant/sectorRotation.ts` | `sectorScores()`, `momentumScore()`, `meanReversionBoost()` |
+| `lib/quant/intermarket.ts` | `analyzeIntermarket()`, `classifyRegime()` |
+| `lib/strategy/strategyConfig.ts` | `StrategyConfig`, `mergeStrategyConfig`, `validateStrategyConfig`, `toBacktestConfig`, presets, schema version helpers |
+| `lib/strategy/optionsFilter.ts` | `fetchOptionsMetrics`, `applyOptionsFilter`, `applyOptionsSignalFusion` (simulator / backtest) |
+| `lib/infra/runAudit.ts` | `newTraceId`, `buildRunAudit`, `configHashFromObject`, `logRunEvent` |
+| `lib/infra/rateLimit.ts` | `clientKeyFromRequest`, `rateLimitHit` |
+| `lib/infra/apiBase.ts` | `apiUrl()` — browser-side base URL for `/api/*` calls |
+| `lib/auth.ts` | `getAuthOptions()` — NextAuth configuration (Google/GitHub when env set) |
 
 ### Test Pattern
 ```typescript
 import { describe, it, expect } from 'vitest'
-import { myFunction } from '@/lib/...'
-describe('myModule', () => {
-  it('does X', () => { expect(myFunction(...)).toBeCloseTo(expected, 4) })
+import { myFunction } from '@/lib/path/to/module'
+describe('module', () => {
+  it('does X', () => { expect(myFunction(args)).toBeCloseTo(expected, 4) })
 })
 ```
 
 ### Benchmark Baseline
 - 56 instruments (11 GICS sectors × 5 stocks + BTC)
-- Baseline win rate: **56.35%**
-- Win rate must not drop below **55%** after any change (`npm run benchmark`)
+- Baseline win rate: **56.35%** (saved in `scripts/benchmark-results.json`)
+- **Hard floor: 55%** — if win rate drops below this after a change, revert or fix
 
 ---
 
-## Important Constraints
+## Important Constraints for All Agents
 
 1. **No speculative abstractions** — only build what the phase requires
 2. **No extra error handling** for impossible cases — trust TypeScript + framework guarantees
-3. **Benchmark guard** — always run `npm run benchmark` after touching signal/backtest code
-4. **Windows environment** — use Unix bash paths in scripts; vitest binary is `node_modules/.bin/vitest.cmd`
-5. **Yahoo Finance only** — no paid data APIs in core code; paid providers go in `lib/data/providers/` with graceful fallback
+3. **Benchmark guard** — always run `npm run benchmark` after touching `lib/backtest/` or `lib/quant/`
+4. **Windows environment** — use Unix bash paths in scripts; vitest binary may need `.cmd` extension
+5. **Yahoo Finance is free tier** — no paid APIs in core code; paid providers go in `lib/data/providers/` with graceful fallback to Yahoo
+6. **SQLite warehouse** — uses Node built-in `node:sqlite` (Node **22.5+**) when `QUANTAN_SQLITE_PATH` is set; no `better-sqlite3` npm dependency
+7. **TypeScript strict** — `tsc --noEmit` must pass before committing
+8. **Update this file** when a phase completes — change status from 🔲 to ✅ and add what was built
+
+---
+
+## Updating This File
+
+When you complete a phase or significant milestone:
+1. Update the status table above
+2. Add a summary under "What Has Been Built"
+3. Update "What To Build Next" to the next phase
+4. Update the "File Last Updated" line below
 
 ---
 
 ## File Last Updated
-2026-04-12 · Branch: claude/loving-banach · Phases 5–7 complete · Analysis report generated · Optimization infrastructure ready
+2026-04-24 · Continuation cycle: options wall reliability hardening, sparse-chain normalization fallback, and sweet-range sell put/call outputs integrated into contextual analytics UI.

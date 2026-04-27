@@ -1,6 +1,8 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
+import { quantanFeedbackHref } from '@/lib/infra/feedbackUrl'
 import { CODEX_FRAMEWORKS } from '@/lib/quant/frameworks'
 import { ChevronDown, ChevronRight, RefreshCw, Scale, BookOpen, LineChart, Layers, Eye, EyeOff, Lock, CheckCircle2 } from 'lucide-react'
 import { halfKelly } from '@/lib/quant/kelly'
@@ -147,6 +149,33 @@ function isLlmConnectivityCode(code: string | null): boolean {
     'parse_error',
     'invalid_trading_agents_base',
   ].includes(code)
+}
+
+/** Rough alignment between LLM grade and mechanical 200MA regime (education only). */
+function mechanicalVsLlmNote(
+  decision: string | undefined,
+  dip: Payload['ma200Regime'],
+): { tone: 'ok' | 'warn' | 'neutral'; text: string } {
+  if (!decision || !dip) return { tone: 'neutral', text: 'Load fundamentals to compare LLM output with the 200MA regime card in Technicals.' }
+  const d = decision.toUpperCase()
+  const strongBuyish = d.includes('BUY') || d.includes('OVERWEIGHT')
+  const sellish = d.includes('SELL') || d.includes('UNDERWEIGHT')
+  if (strongBuyish && dip.dipSignal === 'FALLING_KNIFE') {
+    return {
+      tone: 'warn',
+      text: 'LLM is constructive but the mechanical 200MA card reads FALLING_KNIFE — reconcile before sizing risk.',
+    }
+  }
+  if (sellish && dip.dipSignal === 'STRONG_DIP') {
+    return {
+      tone: 'warn',
+      text: 'LLM is cautious while the mechanical card flags STRONG_DIP — verify catalysts and earnings before acting.',
+    }
+  }
+  return {
+    tone: 'ok',
+    text: 'Mechanical 200MA regime and LLM stance are directionally consistent enough to proceed to risk sizing — still not a trade recommendation.',
+  }
 }
 
 function isLlmProviderAuthFailure(code: string | null, message: string): boolean {
@@ -429,6 +458,11 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
     fetchPayload(DEFAULT_Q)
   }, [ticker, fetchPayload])
 
+  // Reset advFetched when ticker changes so analytics tab re-fetches fresh data
+  useEffect(() => {
+    setAdvFetched(false)
+  }, [ticker])
+
   useEffect(() => {
     if (sub !== 'technicals' || advFetched) return
     setAdvFetched(true)
@@ -457,6 +491,12 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
     return <Layers className="w-4 h-4 text-violet-400" />
   }
 
+  const llmVsMechanical = useMemo(() => {
+    if (!data?.ma200Regime || !llmResult) return null
+    const grade = String((llmResult as Record<string, unknown>).decision_grade ?? (llmResult as Record<string, unknown>).decision ?? '')
+    return mechanicalVsLlmNote(grade, data.ma200Regime)
+  }, [data?.ma200Regime, llmResult])
+
   return (
     <div className="rounded-2xl border border-slate-800 bg-gradient-to-b from-slate-900/80 to-slate-950/90 overflow-hidden shadow-2xl">
       <div className="px-4 sm:px-6 py-4 border-b border-slate-800 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -482,6 +522,64 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
           Refresh
         </button>
+      </div>
+
+      <div className="px-4 sm:px-6 py-2.5 border-b border-slate-800/80 bg-slate-950/70 space-y-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[10px]">
+          <span className="uppercase tracking-wider text-slate-500 font-semibold shrink-0">Research dock</span>
+          <span className="text-slate-600 hidden sm:inline">·</span>
+          <Link
+            href={`/simulator?tickers=${encodeURIComponent(ticker)}&mode=historical`}
+            className="text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline"
+          >
+            Simulator (this ticker)
+          </Link>
+          <span className="text-slate-600">·</span>
+          <Link href="/backtest" className="text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline">
+            Backtest matrix
+          </Link>
+          <span className="text-slate-600">·</span>
+          <Link
+            href={`/research/${encodeURIComponent(ticker)}`}
+            className="text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline"
+          >
+            Research desk
+          </Link>
+          <span className="text-slate-600">·</span>
+          <Link href="/monitor" className="text-sky-400 hover:text-sky-300 underline-offset-2 hover:underline">
+            Monitor
+          </Link>
+          <span className="text-slate-600">·</span>
+          <a
+            href={quantanFeedbackHref(`QUANTAN Quant Lab feedback: ${ticker}`)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-amber-400/90 hover:text-amber-300 underline-offset-2 hover:underline"
+          >
+            Feedback
+          </a>
+        </div>
+        <p className="text-[9px] text-slate-600 leading-relaxed">
+          UX inspiration only (no copied proprietary UI): multi-tab research hubs like{' '}
+          <a
+            href="https://www.moomoo.com/us/learn"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-500 hover:text-slate-400 underline"
+          >
+            Moomoo Learn
+          </a>
+          ; open multi-agent stacks such as{' '}
+          <a
+            href="https://github.com/TauricResearch/TradingAgents"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-slate-500 hover:text-slate-400 underline"
+          >
+            TradingAgents (GitHub)
+          </a>
+          . “Panda” products differ (e.g. crypto terminals vs equity analyst tools)—treat names as separate categories when benchmarking.
+        </p>
       </div>
 
       <div className="flex flex-wrap gap-1 px-3 sm:px-4 py-2 border-b border-slate-800/80 bg-slate-950/40">
@@ -528,7 +626,15 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
             <p className="text-[11px] text-slate-500 leading-relaxed border border-slate-800/80 rounded-lg p-3 bg-slate-950/50">
               Fundamentals and history from Yahoo Finance unless you configure a{' '}
               <strong className="text-slate-400">Bloomberg bridge</strong> for spot prices (see README). Models are transparent heuristics, not an unbiased oracle.
-              Combine with primary filings (10-K/20-F), your data vendor, and compliance review before acting.
+              Combine with primary filings (10-K/20-F), your data vendor, and compliance review before acting. For signal quality, cross-check any thesis on{' '}
+              <Link href="/backtest" className="text-slate-400 underline hover:text-slate-300">
+                Backtest
+              </Link>{' '}
+              and{' '}
+              <Link href={`/simulator?tickers=${encodeURIComponent(ticker)}&mode=historical`} className="text-slate-400 underline hover:text-slate-300">
+                Simulator
+              </Link>{' '}
+              before sizing risk.
             </p>
 
             {data.dataLineage && (
@@ -1473,6 +1579,36 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                       {(llmResult as any).elapsed_seconds}s &middot;{' '}
                       {(llmResult as any).llm_provider}/{(llmResult as any).model_used || '—'}
                     </div>
+                  </div>
+                )}
+
+                {llmHasRun && llmResult && data?.ma200Regime && llmVsMechanical && (
+                  <div
+                    className={`rounded-lg border px-3 py-2 text-[10px] leading-relaxed ${
+                      llmVsMechanical.tone === 'warn'
+                        ? 'border-amber-500/35 bg-amber-950/15 text-amber-100/90'
+                        : llmVsMechanical.tone === 'ok'
+                          ? 'border-emerald-500/25 bg-emerald-950/10 text-emerald-100/85'
+                          : 'border-slate-700 bg-slate-950/50 text-slate-400'
+                    }`}
+                  >
+                    <span className="font-semibold uppercase tracking-wider text-slate-400">Mechanical cross-check</span>
+                    <span className="text-slate-500"> · 200MA dip signal: {data.ma200Regime.dipSignal}</span>
+                    <p className="mt-1">{llmVsMechanical.text}</p>
+                    <p className="mt-1 text-slate-500">
+                      Open{' '}
+                      <Link href="/backtest" className="text-sky-400/90 hover:underline">
+                        Backtest
+                      </Link>{' '}
+                      or{' '}
+                      <Link
+                        href={`/simulator?tickers=${encodeURIComponent(ticker)}&mode=historical`}
+                        className="text-sky-400/90 hover:underline"
+                      >
+                        Simulator
+                      </Link>{' '}
+                      to stress paths; LLM output is not a substitute for walk-forward validation.
+                    </p>
                   </div>
                 )}
 

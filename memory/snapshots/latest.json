@@ -1,0 +1,27 @@
+{
+  "run_id": "run_0dbe5f9c4ac5",
+  "symbol": "SPY",
+  "mode": "paper",
+  "best": {
+    "params": {
+      "risk_budget": 0.01,
+      "max_leverage": 0.8,
+      "options_weight": 0.1
+    },
+    "metrics": {
+      "sharpe": 73.83205319063019,
+      "sortino": 0.0,
+      "calmar": 0.0,
+      "max_drawdown": -0.0,
+      "turnover": 0.00263758989892914,
+      "hit_rate": 1.0
+    },
+    "ok": true
+  },
+  "stress": {
+    "max_drawdown_ok": true,
+    "turnover_ok": true,
+    "sortino_positive": false
+  },
+  "next_action_for_continue": "Review best params and run next symbol"
+}

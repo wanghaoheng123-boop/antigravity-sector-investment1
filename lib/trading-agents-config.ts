@@ -2,6 +2,7 @@
 // This file is NOT a route file, so it can export arbitrary values.
 
 export const SUPPORTED_PROVIDERS = [
+  'deepseek',
   'openai',
   'google',
   'anthropic',
@@ -14,6 +15,7 @@ export type LLMProvider = (typeof SUPPORTED_PROVIDERS)[number]
 
 // Default models per provider
 export const DEFAULT_MODELS: Record<LLMProvider, { deep: string; quick: string }> = {
+  deepseek:  { deep: 'deepseek-v4-pro', quick: 'deepseek-chat' },
   openai:    { deep: 'gpt-4o',         quick: 'gpt-4o-mini' },
   google:    { deep: 'gemini-2.0-flash', quick: 'gemini-1.5-flash' },
   anthropic: { deep: 'claude-sonnet-4-20250514', quick: 'claude-3-5-haiku-20241022' },
@@ -24,6 +26,7 @@ export const DEFAULT_MODELS: Record<LLMProvider, { deep: string; quick: string }
 
 // Provider display names
 export const PROVIDER_LABELS: Record<LLMProvider, string> = {
+  deepseek:  'DeepSeek',
   openai:    'OpenAI (GPT)',
   google:    'Google (Gemini)',
   anthropic: 'Anthropic (Claude)',

@@ -1,226 +1,146 @@
 /**
- * Portfolio tracker — position model with CRUD operations.
- * MVP persistence via localStorage (no server DB required).
- * TypeScript-safe, works in both browser and Node environments.
+ * Paper portfolio tracker — localStorage MVP.
+ * Positions + cash; unrealized PnL uses mark-to-market from live quotes.
  */
 
-export interface Position {
+export const PORTFOLIO_STORAGE_KEY = 'quantan-portfolio-v1'
+
+export interface PortfolioPosition {
   ticker: string
-  sector: string
   shares: number
-  avgCost: number        // average cost basis per share
-  currentPrice: number
-  unrealizedPnl: number  // (currentPrice - avgCost) * shares
-  unrealizedPnlPct: number
-  weight: number         // position value / total portfolio value
-  entryDate: string      // ISO date
-  stopLossPrice: number | null
-  targetPrice: number | null
+  avgCost: number
+  openedAt: string
 }
 
-export interface Portfolio {
-  id: string
-  name: string
-  positions: Position[]
+export interface PortfolioSnapshot {
   cash: number
-  initialCapital: number
-  totalValue: number     // cash + sum(position market values)
-  unrealizedPnl: number
-  unrealizedPnlPct: number
-  realizedPnl: number
-  createdAt: string
+  positions: PortfolioPosition[]
   updatedAt: string
 }
 
-export interface ClosedTrade {
-  ticker: string
-  sector: string
-  entryDate: string
-  exitDate: string
-  shares: number
-  entryPrice: number
-  exitPrice: number
-  realizedPnl: number
-  realizedPnlPct: number
-  holdingDays: number
-  exitReason: 'signal' | 'stop_loss' | 'profit_target' | 'manual'
+export function defaultSnapshot(): PortfolioSnapshot {
+  return { cash: 100_000, positions: [], updatedAt: new Date().toISOString() }
 }
 
-// ─── Storage key ──────────────────────────────────────────────────────────────
-
-function storageKey(portfolioId: string): string {
-  return `quantan-portfolio-${portfolioId}`
-}
-
-function closedTradesKey(portfolioId: string): string {
-  return `quantan-closed-trades-${portfolioId}`
-}
-
-// ─── CRUD ─────────────────────────────────────────────────────────────────────
-
-export function createPortfolio(name: string, initialCapital: number): Portfolio {
-  const now = new Date().toISOString()
-  return {
-    id: `p-${Date.now()}`,
-    name,
-    positions: [],
-    cash: initialCapital,
-    initialCapital,
-    totalValue: initialCapital,
-    unrealizedPnl: 0,
-    unrealizedPnlPct: 0,
-    realizedPnl: 0,
-    createdAt: now,
-    updatedAt: now,
-  }
-}
-
-export function savePortfolio(portfolio: Portfolio): void {
-  if (typeof localStorage === 'undefined') return
-  localStorage.setItem(storageKey(portfolio.id), JSON.stringify(portfolio))
-}
-
-export function loadPortfolio(portfolioId: string): Portfolio | null {
-  if (typeof localStorage === 'undefined') return null
-  const raw = localStorage.getItem(storageKey(portfolioId))
-  if (!raw) return null
+export function loadSnapshot(): PortfolioSnapshot | null {
+  if (typeof window === 'undefined') return null
   try {
-    return JSON.parse(raw) as Portfolio
+    const raw = localStorage.getItem(PORTFOLIO_STORAGE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as PortfolioSnapshot
+    if (typeof parsed.cash !== 'number' || !Array.isArray(parsed.positions)) return null
+    return parsed
   } catch {
     return null
   }
 }
 
-export function listPortfolioIds(): string[] {
-  if (typeof localStorage === 'undefined') return []
-  const ids: string[] = []
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i)
-    if (key?.startsWith('quantan-portfolio-')) {
-      ids.push(key.replace('quantan-portfolio-', ''))
-    }
-  }
-  return ids
+export function saveSnapshot(s: PortfolioSnapshot): void {
+  if (typeof window === 'undefined') return
+  localStorage.setItem(PORTFOLIO_STORAGE_KEY, JSON.stringify({ ...s, updatedAt: new Date().toISOString() }))
 }
 
-// ─── Position management ──────────────────────────────────────────────────────
+export interface QuoteMap {
+  [ticker: string]: { price: number }
+}
 
-export function addPosition(
-  portfolio: Portfolio,
+export function marketValue(positions: PortfolioPosition[], quotes: QuoteMap): number {
+  let mv = 0
+  for (const p of positions) {
+    const px = quotes[p.ticker]?.price
+    if (px != null && Number.isFinite(px) && px > 0) mv += p.shares * px
+  }
+  return mv
+}
+
+export function costBasis(positions: PortfolioPosition[]): number {
+  return positions.reduce((s, p) => s + p.shares * p.avgCost, 0)
+}
+
+export function unrealizedPnl(positions: PortfolioPosition[], quotes: QuoteMap): number {
+  let pnl = 0
+  for (const p of positions) {
+    const px = quotes[p.ticker]?.price
+    if (px == null || !Number.isFinite(px)) continue
+    pnl += p.shares * (px - p.avgCost)
+  }
+  return pnl
+}
+
+/** Equity = cash + MV(positions). */
+export function totalEquity(snapshot: PortfolioSnapshot, quotes: QuoteMap): number {
+  return snapshot.cash + marketValue(snapshot.positions, quotes)
+}
+
+/**
+ * Reconciliation: book equity should match cash + Σ(shares×price).
+ * Returns { ok, bookEquity, components, drift }.
+ */
+export function reconcile(snapshot: PortfolioSnapshot, quotes: QuoteMap, eps = 0.02): {
+  ok: boolean
+  bookEquity: number
+  cash: number
+  positionsMv: number
+  drift: number
+} {
+  const positionsMv = marketValue(snapshot.positions, quotes)
+  const bookEquity = snapshot.cash + positionsMv
+  const implied = snapshot.cash + positionsMv
+  const drift = Math.abs(bookEquity - implied)
+  return { ok: drift <= eps, bookEquity, cash: snapshot.cash, positionsMv, drift }
+}
+
+export function buy(
+  snapshot: PortfolioSnapshot,
   ticker: string,
-  sector: string,
   shares: number,
   price: number,
-  entryDate: string,
-  stopLossPrice: number | null = null,
-  targetPrice: number | null = null,
-): Portfolio {
+): { next: PortfolioSnapshot; error?: string } {
+  if (shares <= 0 || price <= 0) return { next: snapshot, error: 'Invalid shares or price' }
   const cost = shares * price
-  if (cost > portfolio.cash) {
-    throw new Error(`Insufficient cash: need ${cost.toFixed(2)}, have ${portfolio.cash.toFixed(2)}`)
-  }
-  const existing = portfolio.positions.find(p => p.ticker === ticker)
+  if (cost > snapshot.cash + 1e-6) return { next: snapshot, error: 'Insufficient cash' }
+  const upper = ticker.trim().toUpperCase()
+  const existing = snapshot.positions.find(p => p.ticker === upper)
+  let positions: PortfolioPosition[]
   if (existing) {
-    // Average-up / average-down
     const totalShares = existing.shares + shares
-    const newAvgCost = (existing.shares * existing.avgCost + shares * price) / totalShares
-    existing.shares = totalShares
-    existing.avgCost = newAvgCost
-    existing.currentPrice = price
-    existing.entryDate = entryDate
+    const newAvg = (existing.shares * existing.avgCost + shares * price) / totalShares
+    positions = snapshot.positions.map(p =>
+      p.ticker === upper ? { ...p, shares: totalShares, avgCost: newAvg } : p,
+    )
   } else {
-    portfolio.positions.push({
-      ticker, sector, shares, avgCost: price,
-      currentPrice: price,
-      unrealizedPnl: 0, unrealizedPnlPct: 0, weight: 0,
-      entryDate,
-      stopLossPrice, targetPrice,
-    })
+    positions = [...snapshot.positions, { ticker: upper, shares, avgCost: price, openedAt: new Date().toISOString() }]
   }
-  portfolio.cash -= cost
-  portfolio.updatedAt = new Date().toISOString()
-  return recomputePortfolio(portfolio)
+  return {
+    next: {
+      cash: snapshot.cash - cost,
+      positions,
+      updatedAt: new Date().toISOString(),
+    },
+  }
 }
 
-export function closePosition(
-  portfolio: Portfolio,
+export function sell(
+  snapshot: PortfolioSnapshot,
   ticker: string,
   shares: number,
-  exitPrice: number,
-  exitDate: string,
-  exitReason: ClosedTrade['exitReason'] = 'signal',
-): { portfolio: Portfolio; trade: ClosedTrade } {
-  const pos = portfolio.positions.find(p => p.ticker === ticker)
-  if (!pos) throw new Error(`No position in ${ticker}`)
-  if (shares > pos.shares) throw new Error(`Cannot close ${shares} shares; only hold ${pos.shares}`)
-
-  const proceeds = shares * exitPrice
-  const realizedPnl = (exitPrice - pos.avgCost) * shares
-  const realizedPnlPct = (exitPrice - pos.avgCost) / pos.avgCost
-
-  portfolio.cash += proceeds
-  portfolio.realizedPnl += realizedPnl
-
-  const trade: ClosedTrade = {
-    ticker, sector: pos.sector,
-    entryDate: pos.entryDate, exitDate,
-    shares, entryPrice: pos.avgCost, exitPrice,
-    realizedPnl, realizedPnlPct,
-    holdingDays: Math.round((new Date(exitDate).getTime() - new Date(pos.entryDate).getTime()) / 86400000),
-    exitReason,
+  price: number,
+): { next: PortfolioSnapshot; error?: string } {
+  if (shares <= 0 || price <= 0) return { next: snapshot, error: 'Invalid shares or price' }
+  const upper = ticker.trim().toUpperCase()
+  const existing = snapshot.positions.find(p => p.ticker === upper)
+  if (!existing || existing.shares < shares - 1e-9) return { next: snapshot, error: 'Not enough shares' }
+  const proceeds = shares * price
+  const remaining = existing.shares - shares
+  const positions =
+    remaining < 1e-9
+      ? snapshot.positions.filter(p => p.ticker !== upper)
+      : snapshot.positions.map(p => (p.ticker === upper ? { ...p, shares: remaining } : p))
+  return {
+    next: {
+      cash: snapshot.cash + proceeds,
+      positions,
+      updatedAt: new Date().toISOString(),
+    },
   }
-
-  if (shares >= pos.shares) {
-    portfolio.positions = portfolio.positions.filter(p => p.ticker !== ticker)
-  } else {
-    pos.shares -= shares
-  }
-
-  portfolio.updatedAt = new Date().toISOString()
-  return { portfolio: recomputePortfolio(portfolio), trade }
-}
-
-export function updatePrices(portfolio: Portfolio, prices: Record<string, number>): Portfolio {
-  for (const pos of portfolio.positions) {
-    if (prices[pos.ticker] != null) {
-      pos.currentPrice = prices[pos.ticker]
-    }
-  }
-  return recomputePortfolio(portfolio)
-}
-
-function recomputePortfolio(portfolio: Portfolio): Portfolio {
-  const posValue = portfolio.positions.reduce((s, p) => s + p.shares * p.currentPrice, 0)
-  portfolio.totalValue = portfolio.cash + posValue
-
-  for (const pos of portfolio.positions) {
-    const mktVal = pos.shares * pos.currentPrice
-    pos.unrealizedPnl = (pos.currentPrice - pos.avgCost) * pos.shares
-    pos.unrealizedPnlPct = pos.avgCost > 0 ? (pos.currentPrice - pos.avgCost) / pos.avgCost : 0
-    pos.weight = portfolio.totalValue > 0 ? mktVal / portfolio.totalValue : 0
-  }
-
-  const totalUnrealized = portfolio.positions.reduce((s, p) => s + p.unrealizedPnl, 0)
-  portfolio.unrealizedPnl = totalUnrealized
-  portfolio.unrealizedPnlPct = portfolio.initialCapital > 0
-    ? (portfolio.totalValue - portfolio.initialCapital) / portfolio.initialCapital
-    : 0
-
-  return portfolio
-}
-
-// ─── Closed trade persistence ─────────────────────────────────────────────────
-
-export function appendClosedTrade(portfolioId: string, trade: ClosedTrade): void {
-  if (typeof localStorage === 'undefined') return
-  const key = closedTradesKey(portfolioId)
-  const existing: ClosedTrade[] = JSON.parse(localStorage.getItem(key) ?? '[]')
-  existing.push(trade)
-  localStorage.setItem(key, JSON.stringify(existing))
-}
-
-export function loadClosedTrades(portfolioId: string): ClosedTrade[] {
-  if (typeof localStorage === 'undefined') return []
-  const raw = localStorage.getItem(closedTradesKey(portfolioId))
-  return raw ? (JSON.parse(raw) as ClosedTrade[]) : []
 }

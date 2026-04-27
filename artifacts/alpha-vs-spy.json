@@ -1,0 +1,29 @@
+{
+  "runAt": "2026-04-24T16:40:01.166Z",
+  "window": {
+    "years": "2.39",
+    "bars": 603
+  },
+  "strategy": {
+    "totalReturn": 0.019417951634165598,
+    "annualizedReturn": 0.012128737009218904,
+    "sharpe": -0.09895292402234492,
+    "maxDrawdown": 0.08797476393198891,
+    "trades": 195
+  },
+  "spy": {
+    "totalReturn": 0.5588144584610635,
+    "annualizedReturn": 0.20384564116538528,
+    "sharpe": 0.9934474875139555
+  },
+  "alpha": {
+    "annualized": -0.19171690415616638,
+    "informationRatio": null,
+    "trackingErrorAnn": null
+  },
+  "commercialGate": {
+    "alphaPositive": false,
+    "irAbove04": false,
+    "combined": false
+  }
+}

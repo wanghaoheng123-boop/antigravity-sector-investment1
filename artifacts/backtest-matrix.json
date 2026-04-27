@@ -1,0 +1,475 @@
+{
+  "generatedAt": "2026-04-23T06:08:19.316Z",
+  "universe": [
+    "NVDA",
+    "MSFT",
+    "XOM",
+    "CVX",
+    "BRK.B",
+    "JPM",
+    "LLY",
+    "UNH",
+    "AMZN",
+    "TSLA",
+    "GE",
+    "RTX",
+    "SPY",
+    "QQQ",
+    "GLD",
+    "BTC"
+  ],
+  "windows": [
+    {
+      "years": 10,
+      "instruments": 16,
+      "alignedTradingDays": 1053,
+      "coverageRatio": 1,
+      "totalReturn": -0.011271391115017468,
+      "annualizedReturn": -0.0027116395156191464,
+      "winRate": 0.5087719298245614,
+      "maxDrawdown": 0.106483906980506,
+      "sharpeRatio": -6.2643242157187755,
+      "sortinoRatio": -5.0930986017996895,
+      "medianAnnualizedReturn": 0.001024833040482731,
+      "medianSharpeRatio": -2.220566952477345,
+      "medianSortinoRatio": -3.1400629378612246,
+      "historyDiagnostics": [
+        {
+          "ticker": "NVDA",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "MSFT",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "XOM",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "CVX",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BRK.B",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "JPM",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "LLY",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "UNH",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "AMZN",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "TSLA",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GE",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "RTX",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "SPY",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "QQQ",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GLD",
+          "requestedYears": 10,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BTC",
+          "requestedYears": 10,
+          "loadedRows": 1825,
+          "alignedRows": 1253
+        }
+      ]
+    },
+    {
+      "years": 15,
+      "instruments": 16,
+      "alignedTradingDays": 1053,
+      "coverageRatio": 1,
+      "totalReturn": -0.011271391115017468,
+      "annualizedReturn": -0.0027116395156191464,
+      "winRate": 0.5087719298245614,
+      "maxDrawdown": 0.106483906980506,
+      "sharpeRatio": -6.2643242157187755,
+      "sortinoRatio": -5.0930986017996895,
+      "medianAnnualizedReturn": 0.001024833040482731,
+      "medianSharpeRatio": -2.220566952477345,
+      "medianSortinoRatio": -3.1400629378612246,
+      "historyDiagnostics": [
+        {
+          "ticker": "NVDA",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "MSFT",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "XOM",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "CVX",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BRK.B",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "JPM",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "LLY",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "UNH",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "AMZN",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "TSLA",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GE",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "RTX",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "SPY",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "QQQ",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GLD",
+          "requestedYears": 15,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BTC",
+          "requestedYears": 15,
+          "loadedRows": 1825,
+          "alignedRows": 1253
+        }
+      ]
+    },
+    {
+      "years": 20,
+      "instruments": 16,
+      "alignedTradingDays": 1053,
+      "coverageRatio": 1,
+      "totalReturn": -0.011271391115017468,
+      "annualizedReturn": -0.0027116395156191464,
+      "winRate": 0.5087719298245614,
+      "maxDrawdown": 0.106483906980506,
+      "sharpeRatio": -6.2643242157187755,
+      "sortinoRatio": -5.0930986017996895,
+      "medianAnnualizedReturn": 0.001024833040482731,
+      "medianSharpeRatio": -2.220566952477345,
+      "medianSortinoRatio": -3.1400629378612246,
+      "historyDiagnostics": [
+        {
+          "ticker": "NVDA",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "MSFT",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "XOM",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "CVX",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BRK.B",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "JPM",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "LLY",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "UNH",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "AMZN",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "TSLA",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GE",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "RTX",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "SPY",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "QQQ",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GLD",
+          "requestedYears": 20,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BTC",
+          "requestedYears": 20,
+          "loadedRows": 1825,
+          "alignedRows": 1253
+        }
+      ]
+    },
+    {
+      "years": 30,
+      "instruments": 16,
+      "alignedTradingDays": 1053,
+      "coverageRatio": 1,
+      "totalReturn": -0.011271391115017468,
+      "annualizedReturn": -0.0027116395156191464,
+      "winRate": 0.5087719298245614,
+      "maxDrawdown": 0.106483906980506,
+      "sharpeRatio": -6.2643242157187755,
+      "sortinoRatio": -5.0930986017996895,
+      "medianAnnualizedReturn": 0.001024833040482731,
+      "medianSharpeRatio": -2.220566952477345,
+      "medianSortinoRatio": -3.1400629378612246,
+      "historyDiagnostics": [
+        {
+          "ticker": "NVDA",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "MSFT",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "XOM",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "CVX",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BRK.B",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "JPM",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "LLY",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "UNH",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "AMZN",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "TSLA",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GE",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "RTX",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "SPY",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "QQQ",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "GLD",
+          "requestedYears": 30,
+          "loadedRows": 1254,
+          "alignedRows": 1253
+        },
+        {
+          "ticker": "BTC",
+          "requestedYears": 30,
+          "loadedRows": 1825,
+          "alignedRows": 1253
+        }
+      ]
+    }
+  ]
+}

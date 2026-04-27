@@ -1,71 +1,75 @@
-/**
- * Yahoo Finance data provider.
- *
- * Wraps yahoo-finance2 to implement the DataProvider interface.
- * This is the primary (free-tier) provider — always available, no API key needed.
- */
-
 import YahooFinance from 'yahoo-finance2'
-import type { DataProvider, DailyBar, QuoteSnapshot } from './types'
+import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
+import type { ChartInterval, DailyFetchOptions, DataProvider, ProviderDailyBar, ProviderQuote } from './types'
 
-const yahooFinance = new YahooFinance()
+const client = new YahooFinance()
 
-function toIso(d: Date | string): string {
-  if (typeof d === 'string') return d
-  return d.toISOString().slice(0, 10)
+function normalizeSymbol(raw: string): string {
+  return yahooSymbolFromParam(raw)
+}
+
+function chartIntervalToYahoo(interval: ChartInterval): '1d' | '1wk' | '1mo' {
+  return interval
 }
 
 export class YahooProvider implements DataProvider {
-  readonly name = 'yahoo-finance2'
+  readonly name = 'yahoo'
 
   isAvailable(): boolean {
-    return true  // yahoo-finance2 requires no API key
+    return true
   }
 
-  async fetchDaily(ticker: string, startDate: Date | string): Promise<DailyBar[] | null> {
+  async fetchDaily(symbol: string, opts: DailyFetchOptions): Promise<ProviderDailyBar[] | null> {
+    const sym = normalizeSymbol(symbol)
     try {
-      const period1 = startDate instanceof Date ? startDate : new Date(startDate)
-      const chart = await yahooFinance.chart(ticker, { period1, interval: '1d' })
-      const quotes = chart?.quotes ?? []
-      const bars: DailyBar[] = []
-      for (const q of quotes) {
-        if (q.close == null || q.close <= 0) continue
-        const date = q.date instanceof Date
-          ? q.date.toISOString().slice(0, 10)
-          : String(q.date).slice(0, 10)
-        bars.push({
-          date,
-          open:   q.open  ?? q.close,
-          high:   q.high  ?? q.close,
-          low:    q.low   ?? q.close,
-          close:  q.close,
-          volume: q.volume ?? 0,
+      const result = await client.chart(sym, {
+        period1: opts.period1,
+        interval: chartIntervalToYahoo(opts.interval),
+      })
+      const quotes = result?.quotes
+      if (!quotes?.length) return null
+      const out: ProviderDailyBar[] = []
+      for (const c of quotes) {
+        if (c.close == null || c.open == null || c.high == null || c.low == null) continue
+        const d = c.date instanceof Date ? c.date : new Date(c.date as string)
+        const time = Math.floor(d.getTime() / 1000)
+        out.push({
+          time,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: Number(c.volume ?? 0),
         })
       }
-      return bars.length > 0 ? bars : null
+      return out.length ? out : null
     } catch {
       return null
     }
   }
 
-  async fetchQuote(ticker: string): Promise<QuoteSnapshot | null> {
+  async fetchQuote(symbol: string): Promise<ProviderQuote | null> {
+    const sym = normalizeSymbol(symbol)
     try {
-      const q = await yahooFinance.quote(ticker)
-      if (!q || q.regularMarketPrice == null) return null
+      const q = await client.quote(sym)
+      const price = (q as { regularMarketPrice?: number }).regularMarketPrice
+      if (price == null || !Number.isFinite(price)) return null
+      const t = (q as { regularMarketTime?: Date | string | null }).regularMarketTime
+      let regularMarketTime: Date | null = null
+      if (t instanceof Date) regularMarketTime = t
+      else if (typeof t === 'string') regularMarketTime = new Date(t)
+      const dividendYield = (q as { dividendYield?: number }).dividendYield
+      const averageDailyVolume3Month = (q as { averageDailyVolume3Month?: number }).averageDailyVolume3Month
       return {
-        ticker,
-        price: q.regularMarketPrice,
-        change: q.regularMarketChange ?? 0,
-        changePct: q.regularMarketChangePercent ?? 0,
-        volume: q.regularMarketVolume ?? undefined,
-        marketCap: typeof q.marketCap === 'number' ? q.marketCap : undefined,
-        updatedAt: new Date().toISOString(),
+        symbol: sym,
+        price,
+        regularMarketTime,
+        dividendYield: typeof dividendYield === 'number' ? dividendYield : null,
+        averageDailyVolume3Month:
+          typeof averageDailyVolume3Month === 'number' ? averageDailyVolume3Month : null,
       }
     } catch {
       return null
     }
   }
 }
-
-/** Singleton instance — reuse across the app. */
-export const yahooProvider = new YahooProvider()

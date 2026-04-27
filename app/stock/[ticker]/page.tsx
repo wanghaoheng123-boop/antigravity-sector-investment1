@@ -8,18 +8,12 @@ import WatchlistButton from '@/components/WatchlistButton'
 import QuantLabPanel from '@/components/stock/QuantLabPanel'
 import NewsFeed from '@/components/NewsFeed'
 import IndicatorPanel from '@/components/IndicatorPanel'
-import OptionsChainTable from '@/components/options/OptionsChainTable'
-import GexChart from '@/components/options/GexChart'
-import MaxPainGauge from '@/components/options/MaxPainGauge'
-import FlowScanner from '@/components/options/FlowScanner'
+import ContextualAnalyticsZone from '@/components/zones/ContextualAnalyticsZone'
 import { getNewsForSector, generateDarkPoolPrints } from '@/lib/mockData'
 import { DarkPoolPrint } from '@/lib/sectors'
 import type { DarkPoolAnalysis } from '@/lib/darkpool'
 import { CHART_EMA_PERIODS, tradingDefaultEmaFlags, type ChartEmaKey } from '@/lib/chartEma'
 import { STOCK_CHART_RANGES, isStockIntradayPollRange } from '@/lib/chartYahoo'
-import type { EnrichedChain } from '@/lib/options/chain'
-import type { GexResult } from '@/lib/options/gex'
-import type { UnusualFlowItem, FlowSentimentLabel } from '@/lib/options/flow'
 
 type VisKey = ChartEmaKey | 'vwap' | 'bollingerBands' | 'fibonacci' | 'volSma'
 
@@ -32,13 +26,28 @@ interface DpMarker {
   time: string; price: number; size: number; sentiment: 'BULLISH' | 'BEARISH'
 }
 
+interface OptionsIntelligencePayload {
+  ticker: string
+  spotPrice: number
+  maxPainStrike: number
+  callWallStrike: number
+  putWallStrike: number
+  callWallStrength: number
+  putWallStrength: number
+  confidence: 'high' | 'medium' | 'low'
+  confidenceReason: string
+  entryBands: Array<{ tier: 'conservative' | 'balanced' | 'aggressive'; low: number; high: number; note: string }>
+  sellPutCandidates: Array<{ tier: 'conservative' | 'balanced' | 'aggressive'; strike: number; daysToExpiry: number; premiumYieldPct: number; distanceFromSpotPct: number; rationale: string }>
+  sellCallCandidates: Array<{ tier: 'conservative' | 'balanced' | 'aggressive'; strike: number; daysToExpiry: number; premiumYieldPct: number; distanceFromSpotPct: number; rationale: string }>
+  error?: string
+}
+
 const CHART_POLL_MS = (range: string) =>
   ['1m', '3m', '5m'].includes(range) ? 30_000 : 60_000
 
 const STOCK_MAIN_TABS = [
   ['chart', 'Chart'],
   ['quant', 'Quant Lab'],
-  ['options', 'Options'],
   ['darkpool', 'Dark Pool'],
   ['news', 'News'],
 ] as const
@@ -60,18 +69,15 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
   const [darkPoolPrints, setDarkPoolPrints] = useState<DarkPoolPrint[]>([])
   const [darkPoolApiData, setDarkPoolApiData] = useState<DarkPoolAnalysis | null>(null)
   const [darkPoolApiLoading, setDarkPoolApiLoading] = useState(false)
-  const [optionsChain, setOptionsChain] = useState<EnrichedChain | null>(null)
-  const [optionsGex, setOptionsGex] = useState<GexResult | null>(null)
-  const [optionsFlow, setOptionsFlow] = useState<UnusualFlowItem[]>([])
-  const [optionsSentiment, setOptionsSentiment] = useState<{ flowLabel: FlowSentimentLabel; maxPain: number | null; putCallVolumeRatio: number | null; putCallOiRatio: number | null } | null>(null)
-  const [optionsLoading, setOptionsLoading] = useState(false)
-  const [activeTab, setActiveTab]       = useState<'chart' | 'quant' | 'options' | 'darkpool' | 'news'>('chart')
+  const [activeTab, setActiveTab]       = useState<'chart' | 'quant' | 'darkpool' | 'news'>('chart')
   const [activeRange, setActiveRange]   = useState('1Y')
   const [activeIndicator, setActiveIndicator] = useState('ema')
   const [loading, setLoading]           = useState(true)
   // Indicator visibility state — synced from KLineChart via onIndicatorsChange
   // Both activeIndicator (preset) and vis (individual toggles) feed into indicatorConfig
   const [vis, setVis] = useState<Record<VisKey, boolean>>(() => buildVisFromIndicatorPreset('ema'))
+  const [optionsIntel, setOptionsIntel] = useState<OptionsIntelligencePayload | null>(null)
+  const [optionsIntelLoading, setOptionsIntelLoading] = useState(false)
 
   // Build initial vis from preset key
   function buildVisFromIndicatorPreset(preset: string): Record<VisKey, boolean> {
@@ -173,31 +179,14 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
       .catch(() => setDarkPoolApiLoading(false))
   }, [ticker, activeTab])
 
-  // Options chain (lazy — only when options tab is first activated)
   useEffect(() => {
-    if (activeTab !== 'options') return
-    if (optionsChain) return  // already loaded
-    setOptionsLoading(true)
-    fetch(`/api/options/${encodeURIComponent(ticker)}`)
+    setOptionsIntelLoading(true)
+    fetch(`/api/options/intelligence/${encodeURIComponent(ticker)}`)
       .then(r => r.json())
-      .then(data => {
-        if (data.calls) {
-          setOptionsChain({
-            ticker: data.symbol,
-            underlyingPrice: data.underlyingPrice,
-            expirationDates: data.expirationDates.map((d: string) => new Date(d)),
-            currentExpiry: data.currentExpiry ? new Date(data.currentExpiry) : null,
-            calls: data.calls,
-            puts: data.puts,
-          })
-          setOptionsGex(data.gex)
-          setOptionsFlow(data.unusualFlow ?? [])
-          setOptionsSentiment(data.sentiment ?? null)
-        }
-        setOptionsLoading(false)
-      })
-      .catch(() => setOptionsLoading(false))
-  }, [ticker, activeTab, optionsChain])
+      .then((data: OptionsIntelligencePayload) => setOptionsIntel(data))
+      .catch(() => setOptionsIntel({ ticker, error: 'Failed to load options intelligence.' } as OptionsIntelligencePayload))
+      .finally(() => setOptionsIntelLoading(false))
+  }, [ticker])
 
   const news = getNewsForSector('technology')
   const newsMarkers = news.slice(0, 3).map((n, i) => {
@@ -329,67 +318,6 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                 </div>
               )}
 
-              {activeTab === 'options' && (
-                <div className="space-y-6">
-                  {optionsLoading && (
-                    <div className="text-center py-12 text-gray-400 text-sm">Loading options chain...</div>
-                  )}
-                  {!optionsLoading && !optionsChain && (
-                    <div className="text-center py-12 text-gray-500 text-sm">No options data available for {ticker}.</div>
-                  )}
-                  {optionsChain && (
-                    <>
-                      {/* Chain table */}
-                      <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4">
-                        <h3 className="text-sm font-semibold text-white mb-4">Options Chain</h3>
-                        <OptionsChainTable chain={optionsChain} />
-                      </div>
-
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                        {/* GEX chart */}
-                        {optionsGex && (
-                          <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4">
-                            <h3 className="text-sm font-semibold text-white mb-4">Gamma Exposure (GEX)</h3>
-                            <GexChart gex={optionsGex} spot={optionsChain.underlyingPrice} />
-                          </div>
-                        )}
-
-                        {/* Max Pain */}
-                        {optionsSentiment?.maxPain != null && (
-                          <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4">
-                            <h3 className="text-sm font-semibold text-white mb-4">Max Pain</h3>
-                            <MaxPainGauge maxPain={optionsSentiment.maxPain} spot={optionsChain.underlyingPrice} />
-                            <div className="mt-3 grid grid-cols-2 gap-3 text-xs">
-                              <div>
-                                <span className="text-gray-500">P/C Vol Ratio: </span>
-                                <span className="text-gray-300 font-mono">
-                                  {optionsSentiment.putCallVolumeRatio?.toFixed(2) ?? '—'}
-                                </span>
-                              </div>
-                              <div>
-                                <span className="text-gray-500">P/C OI Ratio: </span>
-                                <span className="text-gray-300 font-mono">
-                                  {optionsSentiment.putCallOiRatio?.toFixed(2) ?? '—'}
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Unusual Flow */}
-                      <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-4">
-                        <h3 className="text-sm font-semibold text-white mb-4">Unusual Flow Scanner</h3>
-                        <FlowScanner
-                          items={optionsFlow}
-                          sentiment={optionsSentiment?.flowLabel ?? 'NEUTRAL'}
-                        />
-                      </div>
-                    </>
-                  )}
-                </div>
-              )}
-
               {activeTab === 'darkpool' && (
                 <DarkPoolPanel prints={darkPoolPrints} ticker={ticker} color={color}
                   apiData={darkPoolApiData} apiLoading={darkPoolApiLoading} />
@@ -428,6 +356,13 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                   </p>
                 </div>
               </div>
+
+              <ContextualAnalyticsZone
+                title="Ticker Analytics"
+                ticker={ticker}
+                data={optionsIntel}
+                loading={optionsIntelLoading}
+              />
 
               {darkPoolPrints.length > 0 && (
                 <div>

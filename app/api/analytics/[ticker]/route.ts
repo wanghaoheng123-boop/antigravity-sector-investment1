@@ -1,11 +1,9 @@
 import { NextResponse } from 'next/server'
-import YahooFinance from 'yahoo-finance2'
+import { getEquityDataProvider } from '@/lib/data/providers'
 import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
 import { dailyReturns } from '@/lib/quant/technicals'
 import { alignCloses, logReturns, correlation } from '@/lib/quant/relativeStrength'
 import { hasPositiveClose } from '@/lib/quant/chartQuoteFilter'
-
-const yahooFinance = new YahooFinance()
 
 /** Extra analytics (win rate, up/down days, beta proxy) — complements `/api/fundamentals`. */
 export async function GET(_req: Request, { params }: { params: { ticker: string } }) {
@@ -16,25 +14,31 @@ export async function GET(_req: Request, { params }: { params: { ticker: string 
 
   const period1 = new Date()
   period1.setFullYear(period1.getFullYear() - 5)
+  const provider = getEquityDataProvider()
+  const opts = { period1, interval: '1d' as const }
 
   try {
-    const [chart, spyChart, quote] = await Promise.all([
-      yahooFinance.chart(symbol, { period1, interval: '1d' }),
-      yahooFinance.chart('SPY', { period1, interval: '1d' }),
-      yahooFinance.quote(symbol).catch(() => null),
+    const [mainBars, spyBars, quote] = await Promise.all([
+      provider.fetchDaily(symbol, opts),
+      provider.fetchDaily('SPY', opts),
+      provider.fetchQuote(symbol).catch(() => null),
     ])
 
-    const quotes = chart?.quotes?.filter(hasPositiveClose) ?? []
-    const closes = quotes.map((c) => c.close!)
-    const dates = quotes.map((c) =>
-      c.date instanceof Date ? c.date.toISOString().slice(0, 10) : String(c.date).slice(0, 10)
-    )
+    if (!mainBars?.length || !spyBars?.length) {
+      return NextResponse.json({ error: 'No historical data' }, { status: 404 })
+    }
 
-    const spyQ = spyChart?.quotes?.filter(hasPositiveClose) ?? []
-    const spyCloses = spyQ.map((c) => c.close!)
-    const spyDates = spyQ.map((c) =>
-      c.date instanceof Date ? c.date.toISOString().slice(0, 10) : String(c.date).slice(0, 10)
-    )
+    const quotes = mainBars
+      .map((b) => ({ close: b.close, date: new Date(b.time * 1000) }))
+      .filter(hasPositiveClose)
+    const closes = quotes.map((c) => c.close)
+    const dates = quotes.map((c) => c.date.toISOString().slice(0, 10))
+
+    const spyQ = spyBars
+      .map((b) => ({ close: b.close, date: new Date(b.time * 1000) }))
+      .filter(hasPositiveClose)
+    const spyCloses = spyQ.map((c) => c.close)
+    const spyDates = spyQ.map((c) => c.date.toISOString().slice(0, 10))
 
     const rets = dailyReturns(closes)
     const slice252 = rets.length >= 5 ? rets.slice(-Math.min(252, rets.length)) : []
@@ -68,8 +72,6 @@ export async function GET(_req: Request, { params }: { params: { ticker: string 
 
     const corr1y = n >= 30 ? correlation(lrA.slice(-252), lrB.slice(-252)) : null
 
-    const q = quote as { dividendYield?: number; averageDailyVolume3Month?: number } | null
-
     return NextResponse.json(
       {
         symbol,
@@ -79,8 +81,9 @@ export async function GET(_req: Request, { params }: { params: { ticker: string 
         avgDailyReturn: avgDailyRet,
         betaVsSpyLogReturns: betaProxy,
         correlationVsSpy1y: corr1y,
-        dividendYield: typeof q?.dividendYield === 'number' ? q.dividendYield : null,
-        avgVolume3m: typeof q?.averageDailyVolume3Month === 'number' ? q.averageDailyVolume3Month : null,
+        dividendYield: typeof quote?.dividendYield === 'number' ? quote.dividendYield : null,
+        avgVolume3m:
+          typeof quote?.averageDailyVolume3Month === 'number' ? quote.averageDailyVolume3Month : null,
         note:
           'Beta is a quick OLS slope on overlapping log returns vs SPY (~1y window when available), not Bloomberg-adjusted beta.',
       },

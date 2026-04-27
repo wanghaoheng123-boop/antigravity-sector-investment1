@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import SectorCard from '@/components/SectorCard'
 import SignalCard from '@/components/SignalCard'
@@ -53,6 +53,8 @@ export default function HomePage() {
   const [newsBriefs, setNewsBriefs] = useState<NewsBrief[]>([])
   const [newsLoading, setNewsLoading] = useState(true)
   const [activeFilter, setActiveFilter] = useState<string>('ALL')
+  const priceHistoryRef = useRef<Record<string, number[]>>({})
+  const [historyTick, setHistoryTick] = useState(0)
 
   const fetchPrices = useCallback(async () => {
     try {
@@ -63,6 +65,16 @@ export default function HomePage() {
         data.quotes.forEach((q: Quote) => { map[q.ticker] = q })
         setQuotes(map)
         setLastUpdate(new Date())
+
+        for (const ticker in map) {
+          const price = map[ticker].price
+          if (!Number.isFinite(price) || price <= 0) continue
+          const arr = priceHistoryRef.current[ticker] ?? []
+          arr.push(price)
+          if (arr.length > 30) arr.shift()
+          priceHistoryRef.current[ticker] = arr
+        }
+        setHistoryTick((n) => n + 1)
       }
     } catch {}
   }, [])
@@ -120,12 +132,17 @@ export default function HomePage() {
     return xs.length % 2 ? xs[m] : (xs[m - 1] + xs[m]) / 2
   }, [signals])
 
-  const tickerItems = SECTORS.map(s => ({
-    ticker: s.etf,
-    name: s.name,
-    price: quotes[s.etf]?.price ?? 0,
-    changePct: quotes[s.etf]?.changePct ?? 0,
-  })).filter(t => t.price > 0)
+  const tickerItems = useMemo(
+    () =>
+      SECTORS.map((s) => ({
+        ticker: s.etf,
+        name: s.name,
+        price: quotes[s.etf]?.price ?? 0,
+        changePct: quotes[s.etf]?.changePct ?? 0,
+        history: priceHistoryRef.current[s.etf] ? [...priceHistoryRef.current[s.etf]] : [],
+      })).filter((t) => t.price > 0),
+    [quotes, historyTick],
+  )
 
   const filteredSectors = activeFilter === 'ALL'
     ? SECTORS
@@ -297,6 +314,59 @@ export default function HomePage() {
                   </div>
                 )
               })}
+          </div>
+        </section>
+
+        {/* Commodities & Indices */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-sm font-bold text-white">Commodities & Indices</h2>
+              <p className="text-[10px] text-slate-500 mt-0.5">Spot prices for major indices, commodities, and ETFs</p>
+            </div>
+            <Link href="/commodities" className="text-xs text-amber-400 hover:text-amber-300 transition-colors">
+              Full commodities →
+            </Link>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
+            {[
+              // US Indices
+              { ticker: 'SPY', name: 'S&P 500', color: '#3b82f6' },
+              { ticker: 'QQQ', name: 'Nasdaq 100', color: '#06b6d4' },
+              { ticker: 'DIA', name: 'Dow Jones', color: '#8b5cf6' },
+              { ticker: 'IWM', name: 'Russell 2000', color: '#ec4899' },
+              // Bonds
+              { ticker: 'TLT', name: '20+ Y Treasury', color: '#f59e0b' },
+              { ticker: 'HYG', name: 'High Yield', color: '#ef4444' },
+              // Metals & Energy
+              { ticker: 'GLD', name: 'Gold', color: '#fcd34d' },
+              { ticker: 'SLV', name: 'Silver', color: '#94a3b8' },
+              { ticker: 'USO', name: 'WTI Oil', color: '#f97316' },
+              { ticker: 'UNG', name: 'Nat Gas', color: '#22d3ee' },
+              // Broad
+              { ticker: 'DBC', name: 'Broad Commod.', color: '#eab308' },
+              { ticker: 'VIX', name: 'VIX', color: '#a78bfa' },
+            ].map(item => {
+              const q = quotes[item.ticker]
+              const isPos = (q?.changePct ?? 0) >= 0
+              const isNeg = (q?.changePct ?? 0) < 0
+              const changeColor = isPos ? '#00d084' : isNeg ? '#ff4757' : '#64748b'
+              return (
+                <div key={item.ticker} className="rounded-lg border border-slate-800 bg-slate-900/60 p-3 hover:border-slate-700/80 transition-all">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-mono font-bold text-white">{item.ticker}</span>
+                    <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  </div>
+                  <div className="text-sm font-bold text-white font-mono">
+                    {q?.price != null && q.price > 0 ? q.price.toFixed(2) : '—'}
+                  </div>
+                  <div className="text-[10px] font-mono mt-0.5" style={{ color: changeColor }}>
+                    {q?.changePct != null ? `${q.changePct >= 0 ? '+' : ''}${q.changePct.toFixed(2)}%` : '—'}
+                  </div>
+                  <div className="text-[9px] text-slate-600 mt-0.5 truncate">{item.name}</div>
+                </div>
+              )
+            })}
           </div>
         </section>
 

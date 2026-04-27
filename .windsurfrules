@@ -1,0 +1,5 @@
+# AGENT HOOK v1
+# Read AGENT.md fully before any action. All six rules are defined there.
+# Memory note: workspace/SESSION_STATE.json and MEMORY_LOG.md are the
+# cross-agent memory layer. Windsurf's native Cascade memories are supplementary.
+# For durable shared rules, write to this file or AGENTS.md (Windsurf reads both).
