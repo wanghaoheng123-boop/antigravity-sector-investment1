@@ -1,0 +1,32 @@
+{
+  "findings": [
+    {
+      "severity": "medium",
+      "file": "ui/stock/sector/desk/backtest/QuantLab/BtcQuantLab",
+      "issue": "Freshness labels may display incorrect timestamps due to timezone mishandling, as the implementation might rely on local browser time without proper UTC conversion.",
+      "recommendation": "Standardize all timestamps to UTC for backend responses and convert to user's local time only at the presentation layer."
+    },
+    {
+      "severity": "high",
+      "file": "ui/shared/indicators",
+      "issue": "Degraded feed indicators lack comprehensive test coverage for edge cases like intermittent network errors or partial data loss, potentially failing to alert users under realistic failure conditions.",
+      "recommendation": "Expand test suite to simulate network timeouts, HTTP error codes, and incomplete payloads; verify indicator states in each scenario."
+    },
+    {
+      "severity": "critical",
+      "file": "api/errors",
+      "issue": "Changing the error response schema without versioning or deprecation period will break clients that parse the old format.",
+      "recommendation": "Provide the new schema under a versioned API path while retaining legacy format for compatibility."
+    }
+  ],
+  "regressions": [
+    "Formatting helper changes may alter display alignment in dense tables.",
+    "Stricter grid constraints can drop low-frequency instruments from optimization output.",
+    "API error schema change can break existing integrations."
+  ],
+  "confidence": 0.7,
+  "must_fix_before_release": [
+    "Preserve backward compatibility for API error payloads or add explicit versioning.",
+    "Add explicit warning/fallback behavior when OOS trade floor excludes instruments."
+  ]
+}
