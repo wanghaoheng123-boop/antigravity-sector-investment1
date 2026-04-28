@@ -361,6 +361,15 @@ export function btcRegime(candles: BtcCandle[], opts: BtcRegimeOptions = {}): Bt
 
   let regime: BtcRegimeLabel = 'NEUTRAL'
 
+  // Phase 11 A6: floating-point drift in the EMA recursion can leave pct at
+  // ~1e-16 on a strictly flat series, which previously triggered BEAR/BULL
+  // inside the small-band branches. Apply a 0.1% absolute tolerance so we
+  // only step out of NEUTRAL on a meaningful trend.
+  const FLAT_EPS = 0.001
+  const emaCrossEps = ema200 * 1e-9
+  const emaAbove = Number.isFinite(ema50) && ema50 - ema200 > emaCrossEps
+  const emaBelow = Number.isFinite(ema50) && ema200 - ema50 > emaCrossEps
+
   if (pct > 0.20 && Number.isFinite(rsi14) && rsi14 > 80) {
     regime = 'EUPHORIA'
     reasons.push(`Price ${(pct * 100).toFixed(1)}% above 200EMA + RSI ${rsi14.toFixed(0)} > 80`)
@@ -373,10 +382,10 @@ export function btcRegime(candles: BtcCandle[], opts: BtcRegimeOptions = {}): Bt
   } else if (pct < -0.10) {
     regime = 'STRONG_BEAR'
     reasons.push(`Price ${(pct * 100).toFixed(1)}% below 200EMA`)
-  } else if (pct > 0 && Number.isFinite(ema50) && ema50 > ema200) {
+  } else if (pct > FLAT_EPS && emaAbove) {
     regime = 'BULL'
     reasons.push(`Price above 200EMA, 50EMA > 200EMA`)
-  } else if (pct < 0 && Number.isFinite(ema50) && ema50 < ema200) {
+  } else if (pct < -FLAT_EPS && emaBelow) {
     regime = 'BEAR'
     reasons.push(`Price below 200EMA, 50EMA < 200EMA`)
   } else {

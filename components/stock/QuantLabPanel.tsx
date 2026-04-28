@@ -211,6 +211,9 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
     status: 'unknown',
     message: 'Checking backend status…',
   })
+  // Phase 11 A4: track sessionStorage availability so users see a warning
+  // instead of silently losing their key on reload.
+  const [sessionStorageOk, setSessionStorageOk] = useState(true)
 
   const checkLlmBackendHealth = useCallback(async () => {
     setLlmHealthLoading(true)
@@ -308,6 +311,17 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
         setLlmError(msg)
         return
       }
+      // Phase 11 A5: backend may return HTTP 200 with `error`/`decision: "ERROR"`
+      // when the agent graph failed (e.g. invalid API key, model timeout).
+      // Treat those as failures rather than silently caching a broken result.
+      const decision = typeof j.decision === 'string' ? j.decision : ''
+      const errField = typeof j.error === 'string' ? j.error : null
+      if (errField || decision === 'ERROR') {
+        setLlmErrorCode(errField || 'analysis_error')
+        setLlmError(errField || 'TradingAgents analysis returned an error decision.')
+        setLlmResult(null)
+        return
+      }
       setLlmResult(j)
       setLlmHasRun(true)
     } catch (e) {
@@ -334,6 +348,15 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
         return
       }
       if (r.ok) {
+        // Phase 11 A5: cached result may itself be an error result.
+        const decision = typeof j.decision === 'string' ? j.decision : ''
+        const errField = typeof j.error === 'string' ? j.error : null
+        if (errField || decision === 'ERROR') {
+          setLlmErrorCode(errField || 'analysis_error')
+          setLlmError(errField || 'Cached analysis was an error result.')
+          setLlmResult(null)
+          return
+        }
         setLlmResult(j)
         setLlmHasRun(true)
         return
@@ -392,7 +415,10 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
     try {
       if (key.trim()) sessionStorage.setItem('llm_api_key', key)
       else sessionStorage.removeItem('llm_api_key')
-    } catch {}
+    } catch {
+      // Phase 11 A4: surface failure rather than swallowing it.
+      setSessionStorageOk(false)
+    }
   }, [])
 
   // Load API key from sessionStorage on mount
@@ -400,7 +426,9 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
     try {
       const saved = sessionStorage.getItem('llm_api_key')
       if (saved) setLlmApiKey(saved)
-    } catch {}
+    } catch {
+      setSessionStorageOk(false)
+    }
   }, [])
 
   useEffect(() => {
@@ -1228,6 +1256,14 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
                   <Lock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
                   <p className="text-[10px] text-amber-200/80 font-semibold uppercase tracking-wide">Your API Key (Required)</p>
                 </div>
+                {!sessionStorageOk && (
+                  <p
+                    className="text-[10px] text-rose-300 bg-rose-950/40 border border-rose-500/40 rounded px-2 py-1"
+                    role="alert"
+                  >
+                    sessionStorage is unavailable in this browser context. Your key will be lost on reload — re-enter it before each analysis.
+                  </p>
+                )}
                 <p className="text-[10px] text-amber-200/60 leading-relaxed">
                   <strong className="text-amber-200/85">Privacy:</strong> QUANTAN does not save your key in a database.
                   When you run an analysis, the key travels in one request: your browser → this site&apos;s API →{' '}

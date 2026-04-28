@@ -44,7 +44,7 @@ function resolveTradingAgentsBase(): TradingAgentsResolved {
   return { ok: false, reason: 'missing' }
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   const resolved = resolveTradingAgentsBase()
   if (!resolved.ok) {
     return NextResponse.json(
@@ -58,10 +58,17 @@ export async function GET() {
     )
   }
 
+  // Phase 11 B2: ?deep=1 hits /smoke for an additional event-loop +
+  // contextvar propagation probe. Enables the frontend to show a stronger
+  // "Ready" signal without burning LLM credits.
+  const url = new URL(req.url)
+  const deep = url.searchParams.get('deep') === '1'
+  const probePath = deep ? '/smoke' : '/health'
+
   try {
     const controller = new AbortController()
     const timer = setTimeout(() => controller.abort(), 8000)
-    const r = await fetch(`${resolved.base}/health`, {
+    const r = await fetch(`${resolved.base}${probePath}`, {
       signal: controller.signal,
       headers: { Accept: 'application/json' },
       cache: 'no-store',
@@ -75,17 +82,37 @@ export async function GET() {
           source: resolved.source,
           base: resolved.base,
           error: 'backend_unreachable',
-          details: `health returned ${r.status}`,
+          details: `${probePath} returned ${r.status}`,
         },
         { status: 200 }
       )
     }
+    let smoke: Record<string, unknown> | null = null
+    if (deep) {
+      try {
+        smoke = (await r.json()) as Record<string, unknown>
+      } catch {
+        // ignore — we still consider the backend reachable
+      }
+    }
+    const ctxPropagation = smoke && typeof smoke.context_propagation === 'boolean'
+      ? smoke.context_propagation
+      : null
     return NextResponse.json(
       {
         ok: true,
-        status: 'ready',
+        status: ctxPropagation === false ? 'unreachable' : 'ready',
         source: resolved.source,
         base: resolved.base,
+        ...(deep
+          ? {
+              deep: true,
+              context_propagation: ctxPropagation,
+              elapsed_ms: typeof smoke?.elapsed_ms === 'number' ? smoke.elapsed_ms : null,
+              providers_supported:
+                Array.isArray(smoke?.providers_supported) ? smoke?.providers_supported : null,
+            }
+          : {}),
       },
       { status: 200, headers: { 'Cache-Control': 'no-store' } }
     )
