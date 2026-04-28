@@ -37,7 +37,9 @@ function loadAllTickers() {
         candles: data.candles || [],
       }
     })
-    .filter(d => d.candles.length > 0)
+    // Phase 11 D: skip macro proxies (TLT/UUP/TNX/IRX) — these were added
+    // for sector gates and are not part of the 56-instrument benchmark.
+    .filter(d => d.candles.length > 0 && d.sector !== 'Macro')
 }
 
 // ─── Inline indicator math (matches lib/quant/indicators.ts) ─────────────

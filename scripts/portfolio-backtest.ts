@@ -56,6 +56,8 @@ function loadAllTickers(): { instrumentData: Record<string, OhlcvRow[]>; sectorM
              Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close),
     )
     if (rows.length < 252) continue
+    // Phase 11 D: skip macro proxies — they're for sector gates, not for sizing.
+    if ((data.sector ?? '') === 'Macro') continue
     instrumentData[ticker] = rows
     sectorMap[ticker] = SECTORS_MAP[ticker] ?? data.sector ?? 'Unknown'
   }

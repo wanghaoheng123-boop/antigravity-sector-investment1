@@ -60,9 +60,11 @@ function loadAllTickers(): Array<{ ticker: string; sector: string; rows: OhlcvRo
         (c) => Number.isFinite(c.time) && Number.isFinite(c.open) &&
                Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close),
       )
-      return { ticker, sector, rows }
+      return { ticker, sector, rows, raw: data }
     })
-    .filter((d) => d.rows.length >= 252)
+    // Phase 11 D: drop macro proxies that the fetcher saved alongside stocks.
+    .filter((d) => d.rows.length >= 252 && (d.raw.sector ?? '') !== 'Macro')
+    .map(({ raw: _ignored, ...rest }) => rest)
 }
 
 function fmtPct(n: number | null | undefined): string {

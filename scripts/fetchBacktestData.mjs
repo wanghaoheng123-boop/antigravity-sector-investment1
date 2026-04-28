@@ -70,6 +70,16 @@ const TICKERS = [
 const OUTPUT_DIR = path.resolve(__dirname, 'backtestData');
 const PERIOD_DAYS = 1825; // 5 years
 
+// Phase 11 D — macro proxies for sector gates. TLT (rate proxy), UUP (DXY
+// proxy on Yahoo), ^TNX and ^IRX (yield-curve gate). Saved alongside stocks
+// so backtests can pull the same calendar without a second fetch.
+const MACRO_TICKERS = [
+  { yahooSymbol: 'TLT',   filename: 'TLT'   }, // 20+ year Treasury bond ETF
+  { yahooSymbol: 'UUP',   filename: 'UUP'   }, // Invesco DB US Dollar Index Bullish — DXY proxy
+  { yahooSymbol: '%5ETNX', filename: 'TNX'  }, // 10-year Treasury yield (CBOE)
+  { yahooSymbol: '%5EIRX', filename: 'IRX'  }, // 13-week T-bill yield (CBOE)
+];
+
 mkdirSync(OUTPUT_DIR, { recursive: true });
 
 function saveResult(ticker, sector, candles) {
@@ -122,8 +132,30 @@ async function fetchBTC(sector = 'Crypto') {
   console.log(`[BTC] Saved ${candles.length} candles`);
 }
 
+async function fetchMacro(yahooSymbol, filename) {
+  // Yahoo's chart() handles the URL-encoded ^ via the symbol param; we keep
+  // the encoded form so it round-trips through any URL composition cleanly.
+  const symbol = decodeURIComponent(yahooSymbol);
+  const result = await yf.chart(symbol, {
+    period1: new Date(Date.now() - PERIOD_DAYS * 86400000),
+    interval: '1d',
+  });
+
+  const candles = (result.quotes || []).map((q) => ({
+    time:   Math.floor(new Date(q.date).getTime() / 1000),
+    open:   q.open,
+    high:   q.high,
+    low:    q.low,
+    close:  q.close,
+    volume: q.volume ?? 0,
+  }));
+
+  saveResult(filename, 'Macro', candles);
+  console.log(`[${filename}] Saved ${candles.length} macro candles (${symbol})`);
+}
+
 async function main() {
-  console.log(`Fetching ${PERIOD_DAYS}-day daily OHLCV for ${TICKERS.length} stocks + BTC...\n`);
+  console.log(`Fetching ${PERIOD_DAYS}-day daily OHLCV for ${TICKERS.length} stocks + BTC + ${MACRO_TICKERS.length} macro...\n`);
 
   let success = 0;
   let failed  = 0;
@@ -144,6 +176,16 @@ async function main() {
   } catch (err) {
     console.error(`[BTC] ERROR: ${err.message}`);
     failed++;
+  }
+
+  for (const m of MACRO_TICKERS) {
+    try {
+      await fetchMacro(m.yahooSymbol, m.filename);
+      success++;
+    } catch (err) {
+      console.error(`[${m.filename}] ERROR: ${err.message}`);
+      failed++;
+    }
   }
 
   console.log(`\nDone. Success: ${success}  |  Failed: ${failed}`);

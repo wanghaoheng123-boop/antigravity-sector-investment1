@@ -16,6 +16,8 @@ import {
 import { multiTimeframeSignal } from '@/lib/quant/multiTimeframe'
 import { detectRegime, type RegimeState as VolRegimeState } from '@/lib/quant/regimeDetection'
 import { volumeProfile, priceRelativeToPOC, type PriceZone } from '@/lib/quant/volumeProfile'
+// Phase 11 D — macro gates with failed-closed semantics.
+import { isTltRising, isParkinsonOk, isDxyOk, isYieldCurveOk } from '@/lib/backtest/gates'
 
 export { sma, ema, rsi, macdFn, atr, bollinger }
 
@@ -485,6 +487,28 @@ export interface SectorGateConfig {
   sellWScoreThreshold?: number
   /** Override the 200SMA slope threshold for regime signal. */
   slopeThreshold?: number
+
+  // ── Phase 11 D macro gates (DeepSeek-researched) ──
+  /** Require TLT 20SMA > 50SMA AND rising. Use for REITs / Utilities. */
+  tlrGate?: boolean
+  /** Require Parkinson(20) < 1.5 * Parkinson(60). Use for Materials / commodities. */
+  parkinsonVolGate?: boolean
+  /** Require DXY NOT in a 20SMA-rising regime. Use for gold names. */
+  dxyGate?: boolean
+  /** Require ^TNX - ^IRX > 0 (curve not inverted). Use for banks. */
+  yieldCurveGate?: boolean
+  /** Macro context arrays/values (caller supplies; gates fail closed if missing). */
+  macro?: {
+    tltCloses?: number[]
+    /** Latest highs/lows for the *current* instrument (for Parkinson on its own series). */
+    instrumentHighs?: number[]
+    instrumentLows?: number[]
+    /** Dollar-index proxy (UUP works on Yahoo). */
+    dxyCloses?: number[]
+    /** Latest 10-year yield (^TNX) and 13-week yield (^IRX) in percent. */
+    tnxYield?: number | null
+    irxYield?: number | null
+  }
 }
 
 /**
@@ -601,12 +625,36 @@ export function enhancedCombinedSignal(
   }
 
   // ── Sector gate filters (downgrade BUY → HOLD if gates fail) ──
+  // Phase 11 D: macro gates fail CLOSED — when the gate is enabled but the
+  // requested macro series is missing, BUY is suppressed rather than allowed.
+  let macroGateBlocked = false
+  let macroBlockReason = ''
   if (action === 'BUY' && sectorGates) {
     if (sectorGates.goldenCrossGate && !isGoldenCross(closes)) {
       action = 'HOLD'
     }
     if (action === 'BUY' && sectorGates.requirePositiveMomentum && !hasPositiveMomentum(closes)) {
       action = 'HOLD'
+    }
+    if (action === 'BUY' && sectorGates.tlrGate) {
+      const tlt = sectorGates.macro?.tltCloses
+      const ok = tlt ? isTltRising(tlt) : false
+      if (!ok) { action = 'HOLD'; macroGateBlocked = true; macroBlockReason = 'tlt_not_rising' }
+    }
+    if (action === 'BUY' && sectorGates.parkinsonVolGate) {
+      const highs = sectorGates.macro?.instrumentHighs
+      const lows = sectorGates.macro?.instrumentLows
+      const ok = highs && lows ? isParkinsonOk(highs, lows) : false
+      if (!ok) { action = 'HOLD'; macroGateBlocked = true; macroBlockReason = 'parkinson_spike' }
+    }
+    if (action === 'BUY' && sectorGates.dxyGate) {
+      const dxy = sectorGates.macro?.dxyCloses
+      const ok = dxy ? isDxyOk(dxy) : false
+      if (!ok) { action = 'HOLD'; macroGateBlocked = true; macroBlockReason = 'dxy_rising' }
+    }
+    if (action === 'BUY' && sectorGates.yieldCurveGate) {
+      const ok = isYieldCurveOk(sectorGates.macro?.tnxYield, sectorGates.macro?.irxYield)
+      if (!ok) { action = 'HOLD'; macroGateBlocked = true; macroBlockReason = 'yield_curve_inverted' }
     }
   }
   // Overbought override
@@ -646,11 +694,12 @@ export function enhancedCombinedSignal(
     .filter(c => c.bullish)
     .map(c => `${c.name} ${c.score.toFixed(2)}`)
 
+  const macroSuffix = macroGateBlocked ? ` [macro:${macroBlockReason}]` : ''
   const reason = action === 'BUY'
     ? `${regime.zone} [${regime.dipSignal}]: wScore ${totalWeightedScore.toFixed(2)}. ${confLabels.join(', ') || 'no confirms'}. Kelly ${(kellyFrac * 100).toFixed(0)}%.`
     : action === 'SELL'
     ? `${regime.zone} [${regime.dipSignal}]: wScore ${totalWeightedScore.toFixed(2)}, exiting. ${confLabels.join(', ') || 'no confirms'}.`
-    : `${regime.zone} [${regime.dipSignal}]: wScore ${totalWeightedScore.toFixed(2)}, confidence ${confidence}%. Hold.`
+    : `${regime.zone} [${regime.dipSignal}]: wScore ${totalWeightedScore.toFixed(2)}, confidence ${confidence}%. Hold.${macroSuffix}`
 
   return {
     ticker, date, price, regime,

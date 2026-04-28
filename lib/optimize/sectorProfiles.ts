@@ -58,6 +58,13 @@ export interface SectorProfile {
   atrStopMultiplier: number
   /** Notes for AI agents on what to optimize */
   optimizationNotes: string
+  // ── Phase 11 D additions (DeepSeek-researched macro gates) ──
+  /** Reject BUY when 20-bar Parkinson vol > 1.5× the 60-bar baseline. Materials/commodities. */
+  parkinsonVolGate?: boolean
+  /** Reject BUY when DXY 20SMA is rising. Gold miners. */
+  dxyGate?: boolean
+  /** Reject BUY when 10y-3m yield curve is inverted. Banks (BAC etc). */
+  yieldCurveGate?: boolean
 }
 
 export const SECTOR_PROFILES: Record<string, SectorProfile> = {
@@ -110,6 +117,7 @@ export const SECTOR_PROFILES: Record<string, SectorProfile> = {
     maxHoldDays: 20,
     confidenceThreshold: 55,
     atrStopMultiplier: 1.5,
+    yieldCurveGate: true,              // Phase 11 D: suppress BUY when 10y-3m inverted (Estrella & Mishkin 1998)
     optimizationNotes: 'BAC and banks are rate-cycle sensitive (12.5% win rate). Key improvement: add yield curve slope proxy (10Y-2Y). BAC signals in rate-inversion environment should be suppressed. JPM/V/MA are more resilient.',
   },
 
@@ -212,6 +220,8 @@ export const SECTOR_PROFILES: Record<string, SectorProfile> = {
     maxHoldDays: 15,                   // shorter holds due to commodity volatility
     confidenceThreshold: 60,
     atrStopMultiplier: 2.0,            // NEM/FCX have high ATR
+    parkinsonVolGate: true,            // Phase 11 D: suppress BUY in vol spikes (Parkinson 1980)
+    dxyGate: true,                     // Phase 11 D: suppress when USD rising (gold inverse)
     optimizationNotes: 'NEM (36.4% WR) is the worst — gold miners are anti-correlated with dollar. FCX (42%) is copper-proxy, very cyclical. LIN (26.3%) is counter-intuitive: defensive chemical company but algorithm signals poorly. Fix: NEM needs dollar-index gate (buy NEM only when DXY falling).',
   },
 

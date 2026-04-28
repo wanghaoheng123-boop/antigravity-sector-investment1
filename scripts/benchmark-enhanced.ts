@@ -77,7 +77,49 @@ function loadAllTickers(): Array<{ ticker: string; sector: string; rows: OhlcvRo
       )
       return { ticker, sector, rows }
     })
-    .filter(d => d.rows.length >= 252)
+    .filter(d => d.rows.length >= 252 && d.sector !== 'Macro')
+}
+
+// Phase 11 D — load macro proxies (TLT, UUP, ^TNX, ^IRX) and build a
+// time-aligned lookup. The benchmark loop slices each series up to the
+// current date so signal calls never see future data.
+function loadMacroSeries(): {
+  tlt: OhlcvRow[]
+  uup: OhlcvRow[]
+  tnx: OhlcvRow[]
+  irx: OhlcvRow[]
+} {
+  const empty = { tlt: [], uup: [], tnx: [], irx: [] }
+  if (!existsSync(dataDir)) return empty
+  const read = (filename: string): OhlcvRow[] => {
+    const fp = join(dataDir, `${filename}.json`)
+    if (!existsSync(fp)) return []
+    try {
+      const data = JSON.parse(readFileSync(fp, 'utf-8')) as CandleFile
+      return (data.candles ?? []).filter(
+        c => Number.isFinite(c.time) && Number.isFinite(c.close),
+      )
+    } catch { return [] }
+  }
+  return {
+    tlt: read('TLT'),
+    uup: read('UUP'),
+    tnx: read('TNX'),
+    irx: read('IRX'),
+  }
+}
+
+/** Find the closest index ≤ targetTime so we never look ahead. */
+function indexAtOrBefore(rows: OhlcvRow[], targetTime: number): number {
+  if (rows.length === 0) return -1
+  let lo = 0, hi = rows.length - 1
+  if (rows[0].time > targetTime) return -1
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1
+    if (rows[mid].time <= targetTime) lo = mid
+    else hi = mid - 1
+  }
+  return lo
 }
 
 // ─── Convert rows to the formats signals.ts expects ──────────────────────────
@@ -121,21 +163,29 @@ interface InstrumentResult {
   overfitGap: number | null
 }
 
-function runInstrument(ticker: string, sector: string, rows: OhlcvRow[]): InstrumentResult {
+function runInstrument(
+  ticker: string,
+  sector: string,
+  rows: OhlcvRow[],
+  macro: { tlt: OhlcvRow[]; uup: OhlcvRow[]; tnx: OhlcvRow[]; irx: OhlcvRow[] },
+): InstrumentResult {
   const closes = closesFromRows(rows)
   const bars = barsFromRows(rows)
   const ohlcv = ohlcvBarsFromRows(rows)
 
-  // Phase 11 C2: pull the sector profile and project it onto SectorGateConfig.
-  // Fields not yet honored by enhancedCombinedSignal (tlrGate, maxVixForBuy)
-  // are still passed through so Phase D activations are a one-line change.
+  // Phase 11 C2 + D: pull the sector profile and project it onto SectorGateConfig.
+  // Phase D activates tlrGate, parkinsonVolGate, dxyGate, yieldCurveGate.
   const profile = getProfileForTicker(ticker)
-  const sectorGates: SectorGateConfig = {
+  const baseGates: SectorGateConfig = {
     goldenCrossGate: profile.goldenCrossGate,
     requirePositiveMomentum: profile.requirePositiveMomentum,
     buyWScoreThreshold: profile.buyWScoreThreshold,
     sellWScoreThreshold: profile.sellWScoreThreshold,
     slopeThreshold: profile.slopeThreshold,
+    tlrGate: profile.tlrGate,
+    parkinsonVolGate: profile.parkinsonVolGate,
+    dxyGate: profile.dxyGate,
+    yieldCurveGate: profile.yieldCurveGate,
   }
   const tickerConfig = { ...DEFAULT_CONFIG, confidenceThreshold: profile.confidenceThreshold }
 
@@ -169,6 +219,24 @@ function runInstrument(ticker: string, sector: string, rows: OhlcvRow[]): Instru
       const ret = (exitPrice - openPos.entryPrice) / openPos.entryPrice
       equity *= (1 + ret * 0.15) // 15% position size (half-Kelly approx)
       openPos = null
+    }
+
+    // Phase 11 D: build macro slices through "today" so signals never see future data.
+    const t = rows[i].time
+    const tltIdx = indexAtOrBefore(macro.tlt, t)
+    const uupIdx = indexAtOrBefore(macro.uup, t)
+    const tnxIdx = indexAtOrBefore(macro.tnx, t)
+    const irxIdx = indexAtOrBefore(macro.irx, t)
+    const sectorGates: SectorGateConfig = {
+      ...baseGates,
+      macro: {
+        tltCloses: tltIdx >= 0 ? macro.tlt.slice(0, tltIdx + 1).map(r => r.close) : undefined,
+        instrumentHighs: bars.slice(0, i + 1).map(b => b.high),
+        instrumentLows: bars.slice(0, i + 1).map(b => b.low),
+        dxyCloses: uupIdx >= 0 ? macro.uup.slice(0, uupIdx + 1).map(r => r.close) : undefined,
+        tnxYield: tnxIdx >= 0 ? macro.tnx[tnxIdx].close : null,
+        irxYield: irxIdx >= 0 ? macro.irx[irxIdx].close : null,
+      },
     }
 
     const sig = enhancedCombinedSignal(ticker, date, price, lookback, barLookback, ohlcvLookback, tickerConfig, sectorGates)
@@ -266,14 +334,15 @@ console.log('  enhancedCombinedSignal (7-factor weighted)')
 console.log('══════════════════════════════════════════════════\n')
 
 const allData = loadAllTickers()
-console.log(`Loaded ${allData.length} instruments\n`)
+const macro = loadMacroSeries()
+console.log(`Loaded ${allData.length} instruments + macro: TLT=${macro.tlt.length}, UUP=${macro.uup.length}, TNX=${macro.tnx.length}, IRX=${macro.irx.length}\n`)
 
 const results: InstrumentResult[] = []
 let totalBuys = 0, totalWins = 0, totalLosses = 0
 
 for (const { ticker, sector, rows } of allData) {
   process.stdout.write(`  [${sector.padEnd(18)}] ${ticker.padEnd(8)} `)
-  const r = runInstrument(ticker, sector, rows)
+  const r = runInstrument(ticker, sector, rows, macro)
   results.push(r)
   totalBuys += r.buySignals
   totalWins += r.wins
