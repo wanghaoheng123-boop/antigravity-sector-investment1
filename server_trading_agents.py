@@ -352,6 +352,33 @@ async def health():
     return {"status": "ok", "service": "TradingAgents", "version": "0.3.0"}
 
 
+@app.get("/smoke")
+async def smoke():
+    """Phase 11 B2: cheap end-to-end probe that exercises the FastAPI app
+    plumbing (event loop, threadpool, contextvars, JSON serialization) without
+    touching an LLM provider or burning credits. The frontend's deep health
+    check calls this before showing a green "Ready" indicator so configuration
+    issues surface immediately rather than after a 5-minute timeout.
+    """
+    started = time.time()
+    # Round-trip a contextvar through copy_context()/run_in_executor so we can
+    # detect propagation regressions in production.
+    set_request_api_key("__smoke_token__")
+    ctx = contextvars.copy_context()
+    loop = asyncio.get_event_loop()
+    inherited = await loop.run_in_executor(None, ctx.run, get_request_api_key)
+    set_request_api_key(None)
+    elapsed_ms = round((time.time() - started) * 1000.0, 2)
+    return {
+        "ok": True,
+        "service": "TradingAgents",
+        "version": "0.3.0",
+        "context_propagation": inherited == "__smoke_token__",
+        "elapsed_ms": elapsed_ms,
+        "providers_supported": list(_PROVIDER_API_KEY_ENV.keys()) + ["ollama"],
+    }
+
+
 @app.post("/analyze/{ticker}", response_model=AnalysisResult)
 async def analyze(ticker: str, req: AnalyzeRequest = AnalyzeRequest()):
     """
