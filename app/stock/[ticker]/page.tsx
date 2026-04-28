@@ -17,9 +17,11 @@ import { DarkPoolPrint } from '@/lib/sectors'
 import type { DarkPoolAnalysis } from '@/lib/darkpool'
 import { CHART_EMA_PERIODS, tradingDefaultEmaFlags, type ChartEmaKey } from '@/lib/chartEma'
 import { STOCK_CHART_RANGES, isStockIntradayPollRange } from '@/lib/chartYahoo'
+import { ChartErrorBoundary } from '@/components/ChartErrorBoundary'
 import type { EnrichedChain } from '@/lib/options/chain'
 import type { GexResult } from '@/lib/options/gex'
 import type { UnusualFlowItem, FlowSentimentLabel } from '@/lib/options/flow'
+import { formatCompactNumber, formatCurrency, formatFreshness, formatSignedNumber } from '@/lib/format'
 
 type VisKey = ChartEmaKey | 'vwap' | 'bollingerBands' | 'fibonacci' | 'volSma'
 
@@ -56,7 +58,8 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
 
   const [candles, setCandles]           = useState<Candle[]>([])
   const [darkPoolMarkers, setDarkPoolMarkers] = useState<DpMarker[]>([])
-  const [quote, setQuote]               = useState<{ price: number; change: number; changePct: number; marketCap: string } | null>(null)
+  const [quote, setQuote]               = useState<{ price: number; change: number; changePct: number; marketCap: string; quoteTime?: string | null } | null>(null)
+  const [quoteError, setQuoteError] = useState<string | null>(null)
   const [darkPoolPrints, setDarkPoolPrints] = useState<DarkPoolPrint[]>([])
   const [darkPoolApiData, setDarkPoolApiData] = useState<DarkPoolAnalysis | null>(null)
   const [darkPoolApiLoading, setDarkPoolApiLoading] = useState(false)
@@ -129,9 +132,12 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
       })
       .then((data) => {
         const q = data.quotes?.find((q: { ticker: string }) => q.ticker === ticker)
-        if (q) setQuote(q)
+        if (q) {
+          setQuote(q)
+          setQuoteError(null)
+        }
       })
-      .catch(() => {})
+      .catch((e) => setQuoteError(e instanceof Error ? e.message : 'Quote unavailable'))
   }, [ticker])
 
   // Chart data: fetch on mount and whenever timeframe changes
@@ -236,11 +242,12 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
               <WatchlistButton ticker={ticker} className="shrink-0 self-start" />
               {quote ? (
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-white font-mono">${quote.price.toFixed(2)}</div>
+                  <div className="text-2xl font-bold text-white font-mono">{formatCurrency(quote.price)}</div>
                   <div className={`text-sm font-mono ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                    {isUp ? '▲' : '▼'} {Math.abs(quote.change).toFixed(2)} ({Math.abs(quote.changePct).toFixed(2)}%)
+                    {isUp ? '▲' : '▼'} {formatSignedNumber(quote.change)} ({Math.abs(quote.changePct).toFixed(2)}%)
                   </div>
                   <div className="text-xs text-slate-500 mt-1 font-mono">Market Cap: {quote.marketCap}</div>
+                  <div className="text-[10px] text-slate-600 mt-1">Quote: {formatFreshness(quote.quoteTime)}</div>
                 </div>
               ) : (
                 <div className="space-y-2 text-right w-32">
@@ -302,6 +309,7 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                           ● REFRESHES EVERY {CHART_POLL_MS(activeRange) / 1000}s
                         </span>
                       )}
+                      {quoteError && <span className="text-amber-400/70">QUOTE DEGRADED</span>}
                       <span>{activeRange === '1D' || activeRange === '1W' || activeRange === '5m' || activeRange === '15m' || activeRange === '1H' || activeRange === '4H' ? 'INTRADAY' : 'DAILY+'} BARS</span>
                     </div>
                   </div>
@@ -310,17 +318,19 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                       <span className="text-slate-500 text-sm font-mono mb-2">Connecting to Data Feed...</span>
                     </div>
                   ) : candles.length > 0 ? (
-                    <KLineChart
-                      candles={candles}
-                      darkPoolMarkers={darkPoolMarkers}
-                      newsMarkers={newsMarkers}
-                      color={color}
-                      ticker={ticker}
-                      range={activeRange}
-                      showRSI
-                      indicators={indicatorConfig}
-                      onIndicatorsChange={handleVisChange}
-                    />
+                    <ChartErrorBoundary label={ticker} fallbackHeight={480}>
+                      <KLineChart
+                        candles={candles}
+                        darkPoolMarkers={darkPoolMarkers}
+                        newsMarkers={newsMarkers}
+                        color={color}
+                        ticker={ticker}
+                        range={activeRange}
+                        showRSI
+                        indicators={indicatorConfig}
+                        onIndicatorsChange={handleVisChange}
+                      />
+                    </ChartErrorBoundary>
                   ) : (
                     <div className="h-[480px] bg-slate-800/10 rounded-xl flex items-center justify-center border border-dashed border-slate-800">
                       <span className="text-slate-600 text-sm">No historical data available for {ticker}</span>
@@ -436,7 +446,7 @@ export default function StockPage({ params }: { params: { ticker: string } }) {
                     <div className="bg-slate-900/60 rounded-xl p-3.5 border border-slate-800">
                       <div className="text-xs text-slate-500 mb-1">Total Block Vol</div>
                       <div className="text-lg font-bold text-white font-mono">
-                        {(darkPoolPrints.reduce((s, p) => s + p.size, 0) / 1e6).toFixed(2)}M
+                        {formatCompactNumber(darkPoolPrints.reduce((s, p) => s + p.size, 0))}
                       </div>
                     </div>
                     <div className="bg-slate-900/60 rounded-xl p-3.5 border border-slate-800">

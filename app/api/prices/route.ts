@@ -4,6 +4,7 @@ import YahooFinance from 'yahoo-finance2'
 import { fetchBloombergQuotesViaBridge, isBloombergBridgeConfigured } from '@/lib/data/bloomberg/bridgeClient'
 import { mergeYahooAndBloomberg } from '@/lib/data/mergeQuotes'
 import { normalizedChangePercent } from '@/lib/yahooQuoteFields'
+import { errorResponse, withRetry } from '@/lib/api/reliability'
 
 const yahooFinance = new YahooFinance()
 
@@ -27,7 +28,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const [results, bbMap] = await Promise.all([
-      yahooFinance.quote(tickers) as Promise<any[]>,
+      withRetry(() => yahooFinance.quote(tickers) as Promise<any[]>, { attempts: 2, timeoutMs: 7000, retryLabel: 'yahoo quote' }),
       isBloombergBridgeConfigured() ? fetchBloombergQuotesViaBridge(tickers) : Promise.resolve(null),
     ])
 
@@ -65,6 +66,6 @@ export async function GET(request: NextRequest) {
     )
   } catch (error) {
     console.error('[Prices API] Error fetching from Yahoo Finance:', error)
-    return NextResponse.json({ error: 'Failed to fetch live prices', details: String(error) }, { status: 500 })
+    return errorResponse('prices_fetch_failed', 'Failed to fetch live prices', String(error), 500)
   }
 }

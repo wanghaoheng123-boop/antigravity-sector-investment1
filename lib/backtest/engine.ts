@@ -160,9 +160,12 @@ export function backtestInstrument(
     if (state.openTrade) {
       // ATR% at entry for adaptive stop (stored at entry)
       const atrAtEntry = state.openTrade.atrAtrPctAtEntry ?? 0.10
-      // Adaptive stop: 1.5x ATR%, floored at 3%, capped at 15%
-      // FIX M4: Lowered floor from 5% to 3% to avoid inverting volatility relationship
-      const atrStopPct = Math.max(0.03, Math.min(0.15, 1.5 * atrAtEntry))
+      // Adaptive stop: 1.5x ATR%, capped at 15%.
+      // FIX P12-H2: Instrument-type-aware floor — ETF: 1.5% (XLK ATR ~1.8%, 3% was always active),
+      // Stock: 3% (still too low for high-vol like NVDA but prevents trivial noise exits on ETFs).
+      const ETF_STOP_FLOOR_TICKERS = ['XLK','XLE','XLV','XLF','XLI','XLU','XLB','XLP','XLY','XLRE','XLC','SPY','QQQ','TLT','UUP']
+      const atrFloor = ETF_STOP_FLOOR_TICKERS.includes(ticker) ? 0.015 : 0.03
+      const atrStopPct = Math.max(atrFloor, Math.min(0.15, 1.5 * atrAtEntry))
       const stopPx = state.openTrade.action === 'BUY'
         ? state.openTrade.entryPrice * (1 - atrStopPct)
         : state.openTrade.entryPrice * (1 + atrStopPct)
@@ -288,7 +291,8 @@ export function backtestInstrument(
         shares, value: costBasis,
         regime: signal.regime.label, dipSignal: signal.regime.dipSignal,
         confidence: signal.confidence, pnlPct: null, reason: signal.reason,
-        atrAtrPctAtEntry: Number.isFinite(atrVals[i]) ? (atrVals[i] / signalPrice) * 100 : 0.10,
+        // FIX P12-H3: Use atrVals[i-1] (prior bar) not atrVals[i] — signal bar's own TR not yet closed
+        atrAtrPctAtEntry: Number.isFinite(atrVals[Math.max(0, i - 1)]) ? (atrVals[Math.max(0, i - 1)] / signalPrice) * 100 : 0.10,
         highestPriceAfterEntry: entryPrice,
       }
       state.confidenceSum += signal.confidence
@@ -371,21 +375,21 @@ export function backtestInstrument(
     }
   }
 
-  // Sortino: downside deviation uses MAR-aligned denominator
-  // FIX C1 (Critical): Denominator must be total observations N, not count of negative returns.
-  // Correct formula: DSd = sqrt(sum(min(0, r_i - MAR)^2) / N)
-  // where MAR = risk-free daily rate = rfAnnual / 252
-  // This ensures Sortino is comparable to Sharpe (both use same MAR).
+  // Sortino: downside deviation uses n_d (count of negative-return periods only) as denominator.
+  // FIX P12-H1: Corrected from N (total observations) to n_d per Sortino & van der Meer (1991).
+  // The original Sortino formula: DSd = sqrt(sum(min(0, r_i - MAR)^2) / n_d)
+  // Using N instead of n_d understates downside deviation, inflating Sortino by sqrt(N/n_d).
+  // For a 5Y daily backtest with 40% negative days: overstatement factor ≈ sqrt(2.5) ≈ 1.58×.
   let sortino: number | null = null
   if (dailyReturns.length > 30) {
     const rfD = 0.04 / 252
     // Compute downside deviations: only negative excess returns count
     const downsideDevs = dailyReturns.map(r => Math.min(0, r - rfD))
     const negDevs = downsideDevs.filter(x => x < 0)
-    if (negDevs.length > 0) {
-      // Use total N as denominator (correct formula), not negDevs.length
-      const n = dailyReturns.length
-      const downsideVariance = negDevs.reduce((s, x) => s + x * x, 0) / n
+    if (negDevs.length >= 3) {
+      // Use n_d (count of negative periods) as denominator — Sortino & van der Meer (1991)
+      const nd = negDevs.length
+      const downsideVariance = negDevs.reduce((s, x) => s + x * x, 0) / nd
       const dsd = Math.sqrt(downsideVariance)
       if (dsd > 1e-10) {
         const mean = dailyReturns.reduce((a, b) => a + b, 0) / dailyReturns.length
@@ -522,11 +526,12 @@ export function aggregatePortfolio(results: BacktestResult[], initialCapital: nu
         if (sd > 1e-10) {
           sharpe = ((mean - rfD) / sd) * Math.sqrt(252)
         }
-        // FIX C1: Sortino denominator must be N (total observations), not neg.length
+        // FIX P12-H1: Sortino denominator uses n_d (negative periods), not N — Sortino & van der Meer (1991)
         const downsideDevs = portfolioDailyReturns.map(r => Math.min(0, r - rfD))
         const negDevs = downsideDevs.filter(x => x < 0)
-        if (negDevs.length > 0) {
-          const downsideVariance = negDevs.reduce((s, x) => s + x * x, 0) / n
+        if (negDevs.length >= 3) {
+          const nd = negDevs.length  // use n_d, not n (total observations)
+          const downsideVariance = negDevs.reduce((s, x) => s + x * x, 0) / nd
           const dsd = Math.sqrt(downsideVariance)
           if (dsd > 1e-10) {
             sortino = ((mean - rfD) / dsd) * Math.sqrt(252)

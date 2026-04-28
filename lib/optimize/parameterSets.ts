@@ -75,12 +75,13 @@ export const OPTIMIZATION_TARGETS = {
     minAggregateWinRate: 0.60,     // 60% aggregate win rate (up from 56.35%)
     maxInstrumentsBelow40pct: 3,   // max 3 instruments below 40% (down from 7)
     minProfitFactor: 1.3,
-    maxOSISGap: 0.08,              // IS-OOS gap must be < 8pp (overfitting guard)
+    maxOSISGap: 0.08,              // strict IS-OOS gap cap (8pp)
+    minOOSTrades: 10,              // minimum OOS sample size
   },
   loop2: {
     minSectorWinRate: 0.58,        // all 11 sectors above 58%
     minSectorSharpe: 0.8,
-    maxSectorOSISGap: 0.10,
+    maxSectorOSISGap: 0.08,
   },
   loop3: {
     minPortfolioSharpe: 1.0,       // portfolio-level Sharpe ≥ 1.0

@@ -16,6 +16,7 @@ import {
 } from '@/lib/crypto'
 import { ma200Regime, sma200DeviationPct } from '@/lib/quant/technicals'
 import { apiUrl } from '@/lib/apiBase'
+import { formatFreshness } from '@/lib/format'
 
 interface Props { candles: BtcCandle[] }
 
@@ -88,6 +89,14 @@ async function fetchJsonSafe(path: string): Promise<{ ok: true; data: unknown } 
 }
 
 export default function BtcQuantLab({ candles }: Props) {
+  if (candles.length < 30) {
+    return (
+      <div className="rounded-xl border border-slate-800 bg-slate-900/40 p-4 text-sm text-slate-400">
+        Not enough BTC history loaded yet. Quant signals need at least 30 candles.
+      </div>
+    )
+  }
+
   const [metrics, setMetrics] = useState<MetricsData | null>(null)
   const [liq, setLiq] = useState<LiqData | null>(null)
   const [activeMetricTab, setActiveMetricTab] = useState<'funding' | 'liquidations' | 'signals'>('funding')
@@ -372,7 +381,7 @@ export default function BtcQuantLab({ candles }: Props) {
         {activeMetricTab === 'liquidations' && (
           <div>
             {liqLoading && <div className="text-[10px] text-slate-600 mb-2">Refreshing liquidations data…</div>}
-            {liqFetchedAt && <div className="text-[10px] text-slate-600 mb-2">Last updated: {liqFetchedAt}</div>}
+          {liqFetchedAt && <div className="text-[10px] text-slate-600 mb-2">Last updated: {formatFreshness(liq?.fetchedAt)}</div>}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <MetricCard
                 label="Large Trades (24h)"

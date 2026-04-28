@@ -7,6 +7,7 @@ import { halfKelly } from '@/lib/quant/kelly'
 import { PROVIDER_LABELS, DEFAULT_MODELS } from '@/lib/trading-agents-config'
 import type { LLMProvider } from '@/lib/trading-agents-config'
 import { LlmDeployAssistant } from '@/components/stock/LlmDeployAssistant'
+import { formatCurrency, formatFreshness } from '@/lib/format'
 
 type Payload = {
   symbol: string
@@ -472,6 +473,9 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
             {data?.narrative?.sector}
             {data?.narrative?.industry ? ` · ${data.narrative.industry}` : ''}
           </p>
+          {data?.fetchedAt && (
+            <p className="text-[10px] text-slate-600 mt-1">Freshness: {formatFreshness(data.fetchedAt)}</p>
+          )}
         </div>
         <button
           type="button"
@@ -573,7 +577,7 @@ export default function QuantLabPanel({ ticker }: { ticker: string }) {
 
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               {[
-                ['Price', data.price != null ? `$${data.price.toFixed(2)}` : '—'],
+                ['Price', formatCurrency(data.price)],
                 ['Trailing P/E', data.market.trailingPE != null ? data.market.trailingPE.toFixed(1) : '—'],
                 ['Forward P/E', data.market.forwardPE != null ? data.market.forwardPE.toFixed(1) : '—'],
                 ['P/B', data.market.priceToBook != null ? data.market.priceToBook.toFixed(2) : '—'],

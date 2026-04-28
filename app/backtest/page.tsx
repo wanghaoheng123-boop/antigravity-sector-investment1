@@ -3,10 +3,12 @@
 import { useState, useEffect, useCallback } from 'react'
 import { apiUrl } from '@/lib/apiBase'
 import EquityCurveChart from '@/components/backtest/EquityCurveChart'
+import { ChartErrorBoundary } from '@/components/ChartErrorBoundary'
 import SectorHeatmap from '@/components/backtest/SectorHeatmap'
 import InstrumentTable from '@/components/backtest/InstrumentTable'
 import TradeLog from '@/components/backtest/TradeLog'
 import type { BacktestResult } from '@/lib/backtest/engine'
+import { formatCurrency, formatFreshness, formatPercent } from '@/lib/format'
 
 interface BacktestData {
   runId: string
@@ -33,11 +35,10 @@ interface BacktestData {
 // ─── Number formatters ─────────────────────────────────────────────────────────
 
 function fmtPct(v: number, sign = true): string {
-  const s = sign && v >= 0 ? '+' : ''
-  return `${s}${(v * 100).toFixed(2)}%`
+  return formatPercent(v, 2, sign)
 }
 function fmtMoney(v: number): string {
-  return `$${v.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+  return formatCurrency(v, 0)
 }
 function fmtRatio(v: number | null): string {
   return v == null ? '—' : v === Infinity ? '∞' : v.toFixed(2)
@@ -151,6 +152,7 @@ export default function BacktestPage() {
               <div className="text-right">
                 <div className="text-xs text-slate-500">Last computed</div>
                 <div className="text-sm font-mono text-slate-300">{new Date(computedAt).toLocaleString()}</div>
+                <div className="text-[10px] text-slate-600">{formatFreshness(computedAt)}</div>
               </div>
               <button
                 onClick={() => fetchData(true, selectedTickers.length > 0 ? selectedTickers : undefined)}
@@ -286,10 +288,12 @@ export default function BacktestPage() {
             {/* Equity curves — top performers */}
             <div className="bg-slate-900/60 rounded-2xl border border-slate-800 p-6">
               <h3 className="text-sm font-semibold text-white mb-4 uppercase tracking-wider text-slate-400">Equity Curves — Top 8 by Return</h3>
-              <EquityCurveChart
-                instruments={results.slice().sort((a, b) => b.annualizedReturn - a.annualizedReturn).slice(0, 8)}
-                initialCapital={INITIAL_CAPITAL}
-              />
+              <ChartErrorBoundary label="Equity Curves" fallbackHeight={320}>
+                <EquityCurveChart
+                  instruments={results.slice().sort((a, b) => b.annualizedReturn - a.annualizedReturn).slice(0, 8)}
+                  initialCapital={INITIAL_CAPITAL}
+                />
+              </ChartErrorBoundary>
             </div>
 
             {/* Strategy explanation */}

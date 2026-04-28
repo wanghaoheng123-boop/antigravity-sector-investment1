@@ -15,6 +15,8 @@ import type { DarkPoolAnalysis } from '@/lib/darkpool'
 import { buildSingleSessionSignal } from '@/lib/sessionSignalsFromQuotes'
 import { tradingDefaultEmaFlags } from '@/lib/chartEma'
 import { STOCK_CHART_RANGES, isStockIntradayPollRange } from '@/lib/chartYahoo'
+import { formatCompactNumber, formatCurrency, formatFreshness, formatSignedNumber } from '@/lib/format'
+import { ChartErrorBoundary } from '@/components/ChartErrorBoundary'
 
 const CHART_POLL_MS = (range: string) =>
   ['1m', '3m', '5m'].includes(range) ? 30_000 : 60_000
@@ -55,6 +57,7 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
   const [darkPoolApiLoading, setDarkPoolApiLoading] = useState(false)
   const [activeTab, setActiveTab] = useState('chart')
   const [activeRange, setActiveRange] = useState('6M')
+  const [quoteError, setQuoteError] = useState<string | null>(null)
 
   const fetchChartData = useCallback(
     (range: string) => {
@@ -87,12 +90,18 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
   useEffect(() => {
     const pull = () => {
       fetch(`/api/prices?tickers=${encodeURIComponent(sector.etf)}`)
-        .then((r) => r.json())
+        .then((r) => {
+          if (!r.ok) return Promise.reject(new Error(`HTTP ${r.status}`))
+          return r.json()
+        })
         .then((data) => {
           const q = data.quotes?.find((x: { ticker: string }) => x.ticker === sector.etf)
-          if (q) setQuote(q)
+          if (q) {
+            setQuote(q)
+            setQuoteError(null)
+          }
         })
-        .catch(() => {})
+        .catch((e) => setQuoteError(e instanceof Error ? e.message : 'Quote unavailable'))
     }
     pull()
     const id = setInterval(pull, 15000)
@@ -170,11 +179,12 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
               <WatchlistButton ticker={sector.etf} className="shrink-0" />
               {quote ? (
                 <div className="text-right">
-                  <div className="text-2xl font-bold text-white font-mono">${quote.price.toFixed(2)}</div>
+                  <div className="text-2xl font-bold text-white font-mono">{formatCurrency(quote.price)}</div>
                   <div className={`text-sm font-mono ${isUp ? 'text-green-400' : 'text-red-400'}`}>
-                    {isUp ? '▲' : '▼'} {Math.abs(quote.change).toFixed(2)} ({Math.abs(quote.changePct).toFixed(2)}%)
+                    {isUp ? '▲' : '▼'} {formatSignedNumber(quote.change)} ({Math.abs(quote.changePct).toFixed(2)}%)
                   </div>
                   <div className="text-xs text-slate-600 mt-1 font-mono">ETF: {sector.etf}</div>
+                  <div className="text-[10px] text-slate-600 mt-1">Quote: {formatFreshness(quote.quoteTime)}</div>
                 </div>
               ) : (
                 <div className="space-y-2 text-right w-32">
@@ -188,10 +198,10 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
           {/* Quick stats */}
           {quote && (
             <div className="flex flex-wrap gap-4 mt-4 text-xs text-slate-500">
-              <span>52W High: <span className="text-white font-mono">${quote.high52w.toFixed(2)}</span></span>
-              <span>52W Low: <span className="text-white font-mono">${quote.low52w.toFixed(2)}</span></span>
+              <span>52W High: <span className="text-white font-mono">{formatCurrency(quote.high52w)}</span></span>
+              <span>52W Low: <span className="text-white font-mono">{formatCurrency(quote.low52w)}</span></span>
               <span>P/E: <span className="text-white font-mono">{quote.pe.toFixed(1)}×</span></span>
-              <span>Vol: <span className="text-white font-mono">{(quote.volume / 1e6).toFixed(1)}M</span></span>
+              <span>Vol: <span className="text-white font-mono">{formatCompactNumber(quote.volume)}</span></span>
               <span className="flex items-center gap-2">
                 Top Holdings:
                 {sector.topHoldings.map(h => (
@@ -256,21 +266,24 @@ export default function SectorPage({ params }: { params: { slug: string } }) {
                     {isStockIntradayPollRange(activeRange) && (
                       <span className="text-green-400/60">● {CHART_POLL_MS(activeRange) / 1000}s</span>
                     )}
+                    {quoteError && <span className="text-amber-400/70">QUOTE DEGRADED</span>}
                     <span>
                       {barKind} · {activeRange}
                     </span>
                   </div>
                 </div>
                 {candles.length > 0 ? (
-                  <KLineChart
-                    candles={candles}
-                    darkPoolMarkers={darkPoolMarkers}
-                    color={sector.color}
-                    ticker={sector.etf}
-                    range={activeRange}
-                    showRSI
-                    indicators={sectorIndicators}
-                  />
+                  <ChartErrorBoundary label={sector.etf} fallbackHeight={480}>
+                    <KLineChart
+                      candles={candles}
+                      darkPoolMarkers={darkPoolMarkers}
+                      color={sector.color}
+                      ticker={sector.etf}
+                      range={activeRange}
+                      showRSI
+                      indicators={sectorIndicators}
+                    />
+                  </ChartErrorBoundary>
                 ) : (
                   <div className="h-80 bg-slate-800/30 rounded-xl animate-pulse flex items-center justify-center">
                     <span className="text-slate-600 text-sm">Loading chart data...</span>

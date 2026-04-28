@@ -8,6 +8,8 @@ import PriceTicker from '@/components/PriceTicker'
 import { SECTORS } from '@/lib/sectors'
 import { PriceSignal } from '@/lib/sectors'
 import { buildSessionSignalsFromQuotes } from '@/lib/sessionSignalsFromQuotes'
+import { useErrorToast } from '@/hooks/useErrorToast'
+import { ErrorToastList } from '@/components/ErrorToastList'
 
 // Real news brief from Yahoo Finance API
 interface NewsBrief {
@@ -47,6 +49,7 @@ function formatUtcDateTime(ts: string): string {
 }
 
 export default function HomePage() {
+  const { toasts, showToast, dismissToast } = useErrorToast()
   const [quotes, setQuotes] = useState<Record<string, Quote>>({})
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [countdown, setCountdown] = useState(15)
@@ -64,8 +67,10 @@ export default function HomePage() {
         setQuotes(map)
         setLastUpdate(new Date())
       }
-    } catch {}
-  }, [])
+    } catch (e: unknown) {
+      showToast(`Price refresh failed: ${e instanceof Error ? e.message : 'Network error'}`, 'warn', 4000)
+    }
+  }, [showToast])
 
   useEffect(() => {
     fetchPrices()
@@ -87,8 +92,8 @@ export default function HomePage() {
             setNewsBriefs(data.briefs)
           }
         }
-      } catch {
-        // News fetch failed silently - briefs section will show empty state
+      } catch (e: unknown) {
+        showToast(`News feed failed: ${e instanceof Error ? e.message : 'Network error'}`, 'warn', 5000)
       } finally {
         setNewsLoading(false)
       }
@@ -133,6 +138,9 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen">
+      {/* Error toast notifications — replaces silent .catch(() => {}) (Phase 12 H5) */}
+      <ErrorToastList toasts={toasts} onDismiss={dismissToast} />
+
       {/* Price Ticker */}
       {tickerItems.length > 0 && <PriceTicker items={tickerItems} />}
 

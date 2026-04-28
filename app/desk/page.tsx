@@ -6,6 +6,7 @@ import { DESK_TICKERS } from '@/lib/deskTickers'
 import { SECTORS } from '@/lib/sectors'
 import { COMMODITY_INSTRUMENTS } from '@/lib/commodities'
 import { useWatchlist } from '@/hooks/useWatchlist'
+import { formatCompactNumber, formatCurrency, formatFreshness, formatSignedNumber } from '@/lib/format'
 
 interface Quote {
   ticker: string
@@ -41,6 +42,7 @@ export default function DeskPage() {
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [intervalKey, setIntervalKey] = useState<keyof typeof REFRESH_MS>('normal')
   const [showWatchOnly, setShowWatchOnly] = useState(false)
+  const [fetchError, setFetchError] = useState<string | null>(null)
   const { items: watchlist, has, hydrated } = useWatchlist()
 
   const param = useMemo(() => DESK_TICKERS.map(encodeURIComponent).join(','), [])
@@ -56,9 +58,10 @@ export default function DeskPage() {
         })
         setQuotes(map)
         setLastUpdate(new Date())
+        setFetchError(null)
       }
-    } catch {
-      /* ignore */
+    } catch (e) {
+      setFetchError(e instanceof Error ? e.message : 'Feed unavailable')
     }
   }, [param])
 
@@ -125,10 +128,15 @@ export default function DeskPage() {
             Watchlist only
           </button>
           <span className="text-[10px] text-slate-600 font-mono hidden sm:inline">
-            {lastUpdate ? lastUpdate.toLocaleTimeString() : '—'}
+            {lastUpdate ? formatFreshness(lastUpdate.toISOString()) : '—'}
           </span>
         </div>
       </div>
+      {fetchError && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-200">
+          Quote feed degraded: {fetchError}
+        </div>
+      )}
 
       {groups.map(({ key, title }) => {
         const sectionRows = rows.filter((r) => r.group === key)
@@ -162,15 +170,15 @@ export default function DeskPage() {
                         <td className="px-2 py-1 text-slate-500 truncate max-w-[180px]" title={label}>
                           {label}
                         </td>
-                        <td className="px-2 py-1 text-right text-slate-100">{q ? q.price.toFixed(2) : '—'}</td>
+                        <td className="px-2 py-1 text-right text-slate-100">{q ? formatCurrency(q.price) : '—'}</td>
                         <td className={`px-2 py-1 text-right ${q ? (up ? 'text-emerald-400' : 'text-red-400') : 'text-slate-600'}`}>
-                          {q ? `${up ? '+' : ''}${q.change.toFixed(2)}` : '—'}
+                          {q ? formatSignedNumber(q.change) : '—'}
                         </td>
                         <td className={`px-2 py-1 text-right hidden sm:table-cell ${q ? (up ? 'text-emerald-400' : 'text-red-400') : 'text-slate-600'}`}>
                           {q ? `${up ? '+' : ''}${q.changePct.toFixed(2)}` : '—'}
                         </td>
                         <td className="px-2 py-1 text-right text-slate-600 hidden md:table-cell">
-                          {q && q.volume ? (q.volume / 1e6).toFixed(2) : '—'}
+                          {q && q.volume ? formatCompactNumber(q.volume) : '—'}
                         </td>
                         <td className="px-2 py-1 text-center text-amber-500/90">{has(t) ? '★' : ''}</td>
                         <td className="px-2 py-1">

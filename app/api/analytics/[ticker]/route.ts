@@ -4,6 +4,7 @@ import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
 import { dailyReturns } from '@/lib/quant/technicals'
 import { alignCloses, logReturns, correlation } from '@/lib/quant/relativeStrength'
 import { hasPositiveClose } from '@/lib/quant/chartQuoteFilter'
+import { errorResponse, withRetry } from '@/lib/api/reliability'
 
 const yahooFinance = new YahooFinance()
 
@@ -19,9 +20,9 @@ export async function GET(_req: Request, { params }: { params: { ticker: string 
 
   try {
     const [chart, spyChart, quote] = await Promise.all([
-      yahooFinance.chart(symbol, { period1, interval: '1d' }),
-      yahooFinance.chart('SPY', { period1, interval: '1d' }),
-      yahooFinance.quote(symbol).catch(() => null),
+      withRetry(() => yahooFinance.chart(symbol, { period1, interval: '1d' }), { attempts: 2, timeoutMs: 9000, retryLabel: 'analytics chart' }),
+      withRetry(() => yahooFinance.chart('SPY', { period1, interval: '1d' }), { attempts: 2, timeoutMs: 9000, retryLabel: 'spy chart' }),
+      withRetry(() => yahooFinance.quote(symbol), { attempts: 2, timeoutMs: 6000, retryLabel: 'analytics quote' }).catch(() => null),
     ])
 
     const quotes = chart?.quotes?.filter(hasPositiveClose) ?? []
@@ -88,6 +89,6 @@ export async function GET(_req: Request, { params }: { params: { ticker: string 
     )
   } catch (e) {
     console.error('[Analytics API]', symbol, e)
-    return NextResponse.json({ error: 'Analytics failed', details: String(e) }, { status: 502 })
+    return errorResponse('analytics_failed', 'Analytics failed', String(e), 502)
   }
 }

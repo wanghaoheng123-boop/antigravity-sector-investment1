@@ -4,6 +4,7 @@ import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
 import { buildFundamentalsPayload, type FundamentalsQuery } from '@/lib/quant/buildFundamentalsPayload'
 import { fetchBloombergQuotesViaBridge, isBloombergBridgeConfigured } from '@/lib/data/bloomberg/bridgeClient'
 import { hasPositiveClose } from '@/lib/quant/chartQuoteFilter'
+import { errorResponse, withRetry } from '@/lib/api/reliability'
 
 const yahooFinance = new YahooFinance()
 
@@ -44,10 +45,13 @@ export async function GET(req: NextRequest, { params }: { params: { ticker: stri
 
   try {
     const [summary, chart, spyChart, quoteRow] = await Promise.all([
-      yahooFinance.quoteSummary(symbol, { modules: [...MODULES] }) as Promise<Record<string, unknown>>,
-      yahooFinance.chart(symbol, { period1, interval: '1d' }).catch(() => null),
-      yahooFinance.chart('SPY', { period1, interval: '1d' }).catch(() => null),
-      yahooFinance.quote(symbol).catch(() => null),
+      withRetry(
+        () => yahooFinance.quoteSummary(symbol, { modules: [...MODULES] }) as Promise<Record<string, unknown>>,
+        { attempts: 2, timeoutMs: 10_000, retryLabel: 'fundamentals summary' }
+      ),
+      withRetry(() => yahooFinance.chart(symbol, { period1, interval: '1d' }), { attempts: 2, timeoutMs: 9000, retryLabel: 'fundamentals chart' }).catch(() => null),
+      withRetry(() => yahooFinance.chart('SPY', { period1, interval: '1d' }), { attempts: 2, timeoutMs: 9000, retryLabel: 'fundamentals spy chart' }).catch(() => null),
+      withRetry(() => yahooFinance.quote(symbol), { attempts: 2, timeoutMs: 6000, retryLabel: 'fundamentals quote' }).catch(() => null),
     ])
 
     const quotes = chart?.quotes?.filter(hasPositiveClose) ?? []
@@ -117,10 +121,7 @@ export async function GET(req: NextRequest, { params }: { params: { ticker: stri
     )
   } catch (e) {
     console.error('[Fundamentals API]', symbol, e)
-    return NextResponse.json(
-      { error: 'Failed to load fundamentals', symbol, details: String(e) },
-      { status: 502 }
-    )
+    return errorResponse('fundamentals_failed', `Failed to load fundamentals for ${symbol}`, String(e), 502)
   }
 }
 

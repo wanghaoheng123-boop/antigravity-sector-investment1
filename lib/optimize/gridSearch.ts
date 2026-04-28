@@ -41,6 +41,7 @@ export interface GridSearchResult {
   oosSharpe: number | null
   /** Primary objective: OOS Sharpe */
   score: number
+  robustnessScore: number
 }
 
 export interface GridSearchSummary {
@@ -238,12 +239,16 @@ export function gridSearch(
     const is = simpleBacktestSlice(rows, 0, splitIdx, params)
     const oos = simpleBacktestSlice(rows, splitIdx - 220, rows.length, params)  // overlap for warmup
 
-    if (oos.trades < 5) continue  // insufficient OOS trades
+    if (oos.trades < 10) continue  // stricter OOS sample floor
 
     const overfitGap = is.winRate - oos.winRate
-    if (overfitGap > 0.15) continue  // hard overfitting — reject
+    if (overfitGap > 0.08) continue  // protocol overfitting cap (8pp)
 
-    const score = oos.sharpe ?? oos.winRate  // prefer Sharpe if available
+    const baseScore = oos.sharpe ?? oos.winRate  // prefer Sharpe if available
+    const stabilityPenalty = Math.max(0, Math.abs(overfitGap) - 0.03)
+    const tradePenalty = oos.trades < 20 ? (20 - oos.trades) * 0.01 : 0
+    const robustnessScore = baseScore - stabilityPenalty - tradePenalty
+    const score = robustnessScore
 
     results.push({
       params,
@@ -255,6 +260,7 @@ export function gridSearch(
       isSharpe: is.sharpe,
       oosSharpe: oos.sharpe,
       score,
+      robustnessScore,
     })
   }
 
@@ -270,7 +276,7 @@ export function gridSearch(
     sector,
     totalCombinations: combos.length,
     validCombinations: results.length,
-    best: results[0] ?? { params: combos[0], isWinRate: 0, oosWinRate: 0, overfitGap: 0, isTrades: 0, oosTrades: 0, isSharpe: null, oosSharpe: null, score: 0 },
+    best: results[0] ?? { params: combos[0], isWinRate: 0, oosWinRate: 0, overfitGap: 0, isTrades: 0, oosTrades: 0, isSharpe: null, oosSharpe: null, score: 0, robustnessScore: 0 },
     top5: results.slice(0, 5),
     robustParams,
     splitDate,

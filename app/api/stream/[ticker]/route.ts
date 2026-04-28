@@ -16,6 +16,7 @@
 
 import { yahooSymbolFromParam } from '@/lib/quant/yahooSymbol'
 import YahooFinance from 'yahoo-finance2'
+import { withRetry } from '@/lib/api/reliability'
 
 const yahooFinance = new YahooFinance()
 
@@ -52,7 +53,10 @@ interface QuoteEvent {
 
 async function fetchQuote(symbol: string): Promise<QuoteEvent | null> {
   try {
-    const q = await yahooFinance.quote(symbol, undefined, { validateResult: false })
+    const q = await withRetry(
+      () => yahooFinance.quote(symbol, undefined, { validateResult: false }),
+      { attempts: 2, timeoutMs: 6000, retryLabel: 'stream quote' }
+    )
     if (!q || q.regularMarketPrice == null) return null
     return {
       ticker: symbol,
@@ -99,6 +103,17 @@ export async function GET(
       if (initial) {
         try {
           controller.enqueue(encode(sseMessage('quote', initial)))
+        } catch {
+          close()
+          return
+        }
+      } else {
+        try {
+          controller.enqueue(encode(sseMessage('degraded', {
+            code: 'initial_quote_unavailable',
+            message: 'Initial quote fetch failed, continuing heartbeat stream.',
+            timestamp: new Date().toISOString(),
+          })))
         } catch {
           close()
           return

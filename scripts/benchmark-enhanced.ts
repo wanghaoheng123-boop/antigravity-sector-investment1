@@ -27,6 +27,7 @@ import { fileURLToPath } from 'url'
 // Use relative imports to avoid @/ alias issues with tsx
 import { enhancedCombinedSignal, DEFAULT_CONFIG } from '../lib/backtest/signals'
 import type { OhlcvRow } from './backtest/dataLoader'
+import { getProfileForTicker } from '../lib/optimize/sectorProfiles'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -125,6 +126,19 @@ function runInstrument(ticker: string, sector: string, rows: OhlcvRow[]): Instru
   const ohlcv = ohlcvBarsFromRows(rows)
 
   const bnhReturn = closes.length > 0 ? (closes[closes.length - 1] - closes[0]) / closes[0] : 0
+  const profile = getProfileForTicker(ticker)
+  const cfg = {
+    ...DEFAULT_CONFIG,
+    confidenceThreshold: profile.confidenceThreshold,
+    atrStopMultiplier: profile.atrStopMultiplier,
+  }
+  const sectorGates = {
+    buyWScoreThreshold: profile.buyWScoreThreshold,
+    sellWScoreThreshold: profile.sellWScoreThreshold,
+    slopeThreshold: profile.slopeThreshold,
+    goldenCrossGate: profile.goldenCrossGate,
+    requirePositiveMomentum: profile.requirePositiveMomentum,
+  }
 
   // Walk-forward split
   const splitIdx = Math.floor(rows.length * 0.70)
@@ -156,7 +170,7 @@ function runInstrument(ticker: string, sector: string, rows: OhlcvRow[]): Instru
       openPos = null
     }
 
-    const sig = enhancedCombinedSignal(ticker, date, price, lookback, barLookback, ohlcvLookback, DEFAULT_CONFIG)
+    const sig = enhancedCombinedSignal(ticker, date, price, lookback, barLookback, ohlcvLookback, cfg, sectorGates)
 
     if (sig.action === 'BUY' && !openPos) {
       const entryPrice = closes[i + 1] // next-day execution
@@ -341,6 +355,10 @@ console.log(`  Aggregate Win Rate:      ${(aggWinRate * 100).toFixed(2)}%`)
 console.log(`  Avg WR per Instrument:   ${(avgWRPerInst * 100).toFixed(2)}%`)
 console.log(`  Avg OOS Win Rate:        ${(avgOOS * 100).toFixed(2)}%`)
 console.log(`  Avg Overfit Gap (IS-OOS): ${(avgOverfitGap * 100).toFixed(2)}%`)
+if (aggWinRate < 0.55) {
+  console.error(`\n✗ Benchmark floor breached: ${(aggWinRate * 100).toFixed(2)}% < 55%`)
+  process.exitCode = 1
+}
 console.log(`\n  BOTTOM 10 (need fixes):`)
 for (const r of bottom10) {
   const wr = r.winRate != null ? (r.winRate * 100).toFixed(1) + '%' : 'N/A'
