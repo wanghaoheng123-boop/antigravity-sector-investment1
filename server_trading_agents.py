@@ -35,8 +35,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextvars
 import os
 import threading
+import time
 import traceback
 import uuid
 from contextvars import ContextVar
@@ -131,6 +133,13 @@ class AnalysisResult(BaseModel):
 _results: dict[str, AnalysisResult] = {}
 _results_lock = threading.Lock()
 
+# Phase 11 A3: separate negative cache so error results don't poison /latest.
+# Stores (timestamp_seconds, result). TTL = 60s — long enough for the original
+# caller to retrieve their failure once, short enough that subsequent /latest
+# calls don't get a stale error after the backend recovers.
+_failures: dict[str, tuple[float, "AnalysisResult"]] = {}
+_FAILURE_TTL_SECONDS = 60.0
+
 
 def grade_to_confidence(decision: str) -> str:
     d = decision.upper()
@@ -212,14 +221,22 @@ class _ApiKeyEnvGuard:
         if self.env_var and self.api_key:
             # Save original so we can restore it after this request
             self._orig_value = os.environ.get(self.env_var)
+            self._modified = True
             os.environ[self.env_var] = self.api_key
+        else:
+            self._modified = False
 
     def __exit__(self, *_: Any) -> None:
-        if self.env_var and self._orig_value is not None:
-            if self._orig_value is None:
-                os.environ.pop(self.env_var, None)
-            else:
-                os.environ[self.env_var] = self._orig_value
+        # Phase 11 A3 fix: previously this branch was guarded on
+        # `self._orig_value is not None`, which leaked the user's API key
+        # into the process env when the env var didn't exist before the call.
+        # Restore correctly based on whether we actually wrote.
+        if not getattr(self, "_modified", False):
+            return
+        if self._orig_value is None:
+            os.environ.pop(self.env_var, None)
+        else:
+            os.environ[self.env_var] = self._orig_value
 
 
 # ─────────────────────────────────────────────
@@ -232,6 +249,23 @@ def _run_analysis(
     job_id:         str,
     req:            AnalyzeRequest,
 ) -> AnalysisResult:
+    # Phase 11 A3: when the caller supplied an API key, the contextvar set in
+    # the request handler must have propagated through copy_context() into
+    # this worker thread. If it didn't, abort early with a clear error rather
+    # than silently falling through to the server's default key.
+    if req.api_key is not None and get_request_api_key() != req.api_key:
+        elapsed = 0.0
+        return build_result(
+            ticker=ticker, trade_date_str=trade_date_str,
+            job_id=job_id, final_state=None, decision="ERROR",
+            elapsed=elapsed,
+            llm_provider=req.llm_provider or "unknown",
+            model=req.deep_think_llm or "unknown",
+            error="ContextPropagationError: per-request API key did not "
+                  "reach the analysis thread; refusing to run with server "
+                  "default credentials.",
+        )
+
     config = DEFAULT_CONFIG.copy()
 
     provider    = req.llm_provider        or os.environ.get("TA_LLM_PROVIDER", "openai")
@@ -276,10 +310,19 @@ def _run_analysis(
                 error=f"{type(e).__name__}: {e}",
             )
 
-    # Cache result (no api_key in result object — safe)
+    # Cache result (no api_key in result object — safe).
+    # Phase 11 A3: errors go to a separate, TTL-bounded negative cache so
+    # `/latest` does not return stale failures after the backend recovers.
+    is_error = (result.decision == "ERROR") or bool(result.error)
     with _results_lock:
-        _results[job_id] = result
-        _results[f"{ticker}_latest"] = result
+        _results[job_id] = result  # always retrievable by job_id
+        if is_error:
+            _failures[ticker] = (time.time(), result)
+            # Do NOT update {ticker}_latest with a failure — preserves the last
+            # successful analysis as the canonical "latest" view.
+        else:
+            _results[f"{ticker}_latest"] = result
+            _failures.pop(ticker, None)
 
     return result
 
@@ -344,13 +387,18 @@ async def analyze(ticker: str, req: AnalyzeRequest = AnalyzeRequest()):
 
     job_id = str(uuid.uuid4())[:8]
 
-    # Set api_key in the async context so run_in_executor thread inherits it
+    # Set api_key in the async context. Phase 11 A3: use copy_context() so
+    # the worker thread reliably inherits the contextvar value — bare
+    # run_in_executor is not guaranteed to propagate context across all
+    # Python versions/event-loop policies.
     set_request_api_key(req.api_key)
+    ctx = contextvars.copy_context()
 
     try:
         loop = asyncio.get_event_loop()
         result = await loop.run_in_executor(
             None,
+            ctx.run,
             _run_analysis,
             ticker,
             trade_date_str,
@@ -364,9 +412,26 @@ async def analyze(ticker: str, req: AnalyzeRequest = AnalyzeRequest()):
 
 @app.get("/analyze/{ticker}/latest", response_model=Optional[AnalysisResult])
 async def latest_analysis(ticker: str):
-    """Return the most recent analysis result for this ticker (in-memory cache)."""
+    """Return the most recent analysis result for this ticker (in-memory cache).
+
+    Phase 11 A3: if the most recent run failed within the last
+    `_FAILURE_TTL_SECONDS`, surface that error once so the original caller
+    sees their failure, then fall through to the last good result (or 404)
+    for subsequent calls.
+    """
     ticker = ticker.strip().upper()
+    now = time.time()
     with _results_lock:
+        recent_failure = _failures.get(ticker)
+        if recent_failure is not None:
+            ts, _ = recent_failure
+            if now - ts > _FAILURE_TTL_SECONDS:
+                _failures.pop(ticker, None)
+                recent_failure = None
+        if recent_failure is not None:
+            # Surface the error once, then drop it so /latest can resume.
+            _failures.pop(ticker, None)
+            return recent_failure[1]
         result = _results.get(f"{ticker}_latest", None)
     if not result:
         raise HTTPException(404, f"No cached analysis found for {ticker}")

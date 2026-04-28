@@ -336,20 +336,22 @@ export function backtestInstrument(
   const years = days / 252
   const totalReturn = (finalEquity - initialCapital) / initialCapital
   const annualizedReturn = years > 0 ? (1 + totalReturn) ** (1 / years) - 1 : 0
-  const bnhReturn = (finalPrice - rows[0].close) / rows[0].close
+  const bnhReturn = rows[0].close > 0 ? (finalPrice - rows[0].close) / rows[0].close : 0
 
   // Equity curve metrics
   let peak = initialCapital, maxDd = 0
   for (const eq of state.equityHistory) {
     if (eq > peak) peak = eq
-    const d = (peak - eq) / peak
+    const d = peak > 0 ? (peak - eq) / peak : 0
     if (d > maxDd) maxDd = d
   }
 
   // Compute daily returns from equity curve (for Sharpe/Sortino)
   const dailyReturns: number[] = []
   for (let i = 1; i < state.equityHistory.length; i++) {
-    const ret = (state.equityHistory[i] - state.equityHistory[i - 1]) / state.equityHistory[i - 1]
+    const prev = state.equityHistory[i - 1]
+    if (!(prev > 0)) continue
+    const ret = (state.equityHistory[i] - prev) / prev
     if (Number.isFinite(ret)) dailyReturns.push(ret)
   }
 
