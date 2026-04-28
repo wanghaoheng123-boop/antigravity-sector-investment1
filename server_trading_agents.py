@@ -86,6 +86,15 @@ _PROVIDER_API_KEY_ENV = {
     # ollama has no API key
 }
 
+# Phase 11 A3+ (DeepSeek-flagged): os.environ is process-global. Two
+# concurrent users supplying different API keys would race on the env var
+# inside _ApiKeyEnvGuard, occasionally serving the wrong user's key into
+# the LLM call. Per provider-keyed mutex serializes guard entry/exit so at
+# most one request holds the env-var write per provider at a time.
+_provider_env_mutex: dict[str, threading.Lock] = {
+    p: threading.Lock() for p in _PROVIDER_API_KEY_ENV
+}
+
 
 # ─────────────────────────────────────────────
 # Pydantic models
@@ -218,7 +227,15 @@ class _ApiKeyEnvGuard:
         self._orig_value: str | None = None
 
     def __enter__(self) -> None:
+        # Phase 11 A3+ (DeepSeek): grab the per-provider mutex BEFORE any env
+        # mutation so concurrent requests with different keys cannot race.
+        # The mutex is released in __exit__ to keep the guard window minimal.
+        self._lock_acquired = False
         if self.env_var and self.api_key:
+            lock = _provider_env_mutex.get(self.provider)
+            if lock is not None:
+                lock.acquire()
+                self._lock_acquired = True
             # Save original so we can restore it after this request
             self._orig_value = os.environ.get(self.env_var)
             self._modified = True
@@ -231,12 +248,18 @@ class _ApiKeyEnvGuard:
         # `self._orig_value is not None`, which leaked the user's API key
         # into the process env when the env var didn't exist before the call.
         # Restore correctly based on whether we actually wrote.
-        if not getattr(self, "_modified", False):
-            return
-        if self._orig_value is None:
-            os.environ.pop(self.env_var, None)
-        else:
-            os.environ[self.env_var] = self._orig_value
+        try:
+            if not getattr(self, "_modified", False):
+                return
+            if self._orig_value is None:
+                os.environ.pop(self.env_var, None)
+            else:
+                os.environ[self.env_var] = self._orig_value
+        finally:
+            if getattr(self, "_lock_acquired", False):
+                lock = _provider_env_mutex.get(self.provider)
+                if lock is not None:
+                    lock.release()
 
 
 # ─────────────────────────────────────────────

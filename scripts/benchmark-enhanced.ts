@@ -25,8 +25,10 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 // Use relative imports to avoid @/ alias issues with tsx
-import { enhancedCombinedSignal, DEFAULT_CONFIG } from '../lib/backtest/signals'
+import { enhancedCombinedSignal, DEFAULT_CONFIG, type SectorGateConfig } from '../lib/backtest/signals'
 import type { OhlcvRow } from './backtest/dataLoader'
+// Phase 11 C2: per-sector gate overrides — drives Loop 2 evaluation.
+import { getProfileForTicker } from '../lib/optimize/sectorProfiles'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -124,6 +126,19 @@ function runInstrument(ticker: string, sector: string, rows: OhlcvRow[]): Instru
   const bars = barsFromRows(rows)
   const ohlcv = ohlcvBarsFromRows(rows)
 
+  // Phase 11 C2: pull the sector profile and project it onto SectorGateConfig.
+  // Fields not yet honored by enhancedCombinedSignal (tlrGate, maxVixForBuy)
+  // are still passed through so Phase D activations are a one-line change.
+  const profile = getProfileForTicker(ticker)
+  const sectorGates: SectorGateConfig = {
+    goldenCrossGate: profile.goldenCrossGate,
+    requirePositiveMomentum: profile.requirePositiveMomentum,
+    buyWScoreThreshold: profile.buyWScoreThreshold,
+    sellWScoreThreshold: profile.sellWScoreThreshold,
+    slopeThreshold: profile.slopeThreshold,
+  }
+  const tickerConfig = { ...DEFAULT_CONFIG, confidenceThreshold: profile.confidenceThreshold }
+
   const bnhReturn = closes.length > 0 ? (closes[closes.length - 1] - closes[0]) / closes[0] : 0
 
   // Walk-forward split
@@ -156,7 +171,7 @@ function runInstrument(ticker: string, sector: string, rows: OhlcvRow[]): Instru
       openPos = null
     }
 
-    const sig = enhancedCombinedSignal(ticker, date, price, lookback, barLookback, ohlcvLookback, DEFAULT_CONFIG)
+    const sig = enhancedCombinedSignal(ticker, date, price, lookback, barLookback, ohlcvLookback, tickerConfig, sectorGates)
 
     if (sig.action === 'BUY' && !openPos) {
       const entryPrice = closes[i + 1] // next-day execution
